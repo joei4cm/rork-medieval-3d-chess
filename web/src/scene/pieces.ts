@@ -14,7 +14,8 @@ import { BADGE_LIFT, BADGE_SCALE, TOKEN_SCALE, rankBadgeTexture, tacticalTokenTe
 import { radialTexture } from "./textures";
 import { Ease, type TweenManager } from "./tween";
 import { attachWeapons, type AttachedArms } from "./weapons";
-import { buildXiangqiPiece } from "./xiangqiFigures";
+import { buildXiangqiDisc, buildXiangqiPiece } from "./xiangqiFigures";
+import { xiangqiGlbFactory } from "./xiangqiGlb";
 
 /** Rendered height (world units, 1 unit = 1 board square) per piece kind. */
 export const PIECE_HEIGHT: Record<PieceKind, number> = {
@@ -429,12 +430,19 @@ export class PieceView {
     }
 
     if (xiangqi) {
-      // Original Chinese ancient soldiers — not western Meshy knights.
-      const figure = buildXiangqiPiece(kind, color);
+      // Prefer CC-BY Qin terracotta GLB scans; fall back to procedural Han miniatures.
+      const figure = xiangqiGlbFactory.isReady
+        ? xiangqiGlbFactory.create(kind, color)
+        : buildXiangqiPiece(kind, color);
+      // Ensure a lacquer seal disc sits under GLB-only standing figures.
+      if (!figure.getObjectByName("seal_disc") && !figure.getObjectByName("han_disc")) {
+        const disc = buildXiangqiDisc(color, kind, 0.3);
+        disc.position.y = 0;
+        figure.add(disc);
+      }
       this.visual.add(figure);
       this.visual.position.y = 0;
-      // Slightly larger so lamellar / headgear read at board distance.
-      this.visual.scale.setScalar(1.12);
+      this.visual.scale.setScalar(1);
       figure.traverse((node) => {
         const mesh = node as THREE.Mesh;
         if (!mesh.isMesh) return;
@@ -1359,6 +1367,13 @@ export class PieceFactory {
       }
     }
     this.loaded = true;
+
+    // Qin terracotta scans for Xiangqi — non-blocking failure falls back to procedural.
+    try {
+      await xiangqiGlbFactory.load();
+    } catch (error) {
+      console.warn("[pieces] Xiangqi terracotta GLBs unavailable", error);
+    }
   }
 
   /** Rigged sculpt when the army has one, else its static GLB. */
