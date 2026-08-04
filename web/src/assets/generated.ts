@@ -201,6 +201,8 @@ export const DEATH_CRY_URLS: Record<Faction, Record<PieceKind, string>> = {
     n: `${CRY_BASE}/ebb33bba-cf2b-481f-aec6-4465a6a35253.mp3`,
     r: `${CRY_BASE}/f9d84835-112f-46de-951b-052f867814da.mp3`,
     p: `${CRY_BASE}/e4caca0d-8f61-4228-b349-025ae499cde5.mp3`,
+    a: `${CRY_BASE}/4ca6a216-52fc-4882-b51a-9a44d188edac.mp3`,
+    c: `${CRY_BASE}/e01a2d0f-2b13-426b-89b4-d40e67d4b16f.mp3`,
   },
   b: {
     k: `${CRY_BASE}/7efd7eb4-936a-4488-83ae-e0ebea314601.mp3`,
@@ -211,6 +213,8 @@ export const DEATH_CRY_URLS: Record<Faction, Record<PieceKind, string>> = {
     r: `${CRY_BASE}/6107aca9-aa81-45ff-a3d5-eda9d457fc3b.mp3`,
     // Deep male voice — a rising shout cut short by the death gasp.
     p: `${CRY_BASE}/ffa27c35-53ff-4f3a-a71e-285aff8a2a4b.mp3`,
+    a: `${CRY_BASE}/6ae51ccd-12c2-4002-875d-ec4c1d907227.mp3`,
+    c: `${CRY_BASE}/6fe2ac5d-b4e4-4655-9354-cfbb117bc7f5.mp3`,
   },
 };
 

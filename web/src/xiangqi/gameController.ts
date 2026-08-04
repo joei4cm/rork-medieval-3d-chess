@@ -1,6 +1,4 @@
-import { Chess, type Move, type Square } from "chess.js";
-
-import { Emitter } from "./emitter";
+import { Emitter } from "../core/emitter";
 import {
   type Animator,
   type CapturedPiece,
@@ -17,15 +15,22 @@ import {
   type PieceKind,
   type SquareId,
   PIECE_VALUE,
-} from "./types";
-import { AiClient } from "../ai/aiClient";
+} from "../core/types";
+import { XiangqiAiClient } from "./aiClient";
+import {
+  Xiangqi,
+  fileOf,
+  rankOf,
+  type XMove,
+  type XPiece,
+  XPIECE_VALUE,
+} from "./rules";
 
 export interface StartOptions {
   mode: GameMode;
   difficulty: Difficulty;
   playerColor: Faction;
   clockMinutes: number | null;
-  /** Only read when `mode === "demo"`. */
   demo?: DemoOptions;
 }
 
@@ -36,8 +41,8 @@ export const DEFAULT_DEMO: DemoOptions = {
   autoRematch: true,
 };
 
-/** How long the board sits on the final position before the next showcase game. */
 const DEMO_REMATCH_DELAY_MS = 6500;
+const CLOCK_TICK_MS = 100;
 
 interface ControllerEvents {
   state: GameSnapshot;
@@ -48,15 +53,12 @@ interface ControllerEvents {
   illegal: { from: SquareId; to: SquareId };
 }
 
-const CLOCK_TICK_MS = 100;
-
 /**
- * Owns all chess state. Rendering, audio and UI subscribe to it; it knows
- * nothing about three.js or the DOM.
+ * Owns all Xiangqi state. Rendering, audio and UI subscribe to it.
  */
-export class GameController extends Emitter<ControllerEvents> {
-  private chess = new Chess();
-  private ai = new AiClient();
+export class XiangqiGameController extends Emitter<ControllerEvents> {
+  private game = new Xiangqi();
+  private ai = new XiangqiAiClient();
   private animator: Animator | null = null;
   private clockTimer: ReturnType<typeof setInterval> | null = null;
   private rematchTimer: ReturnType<typeof setTimeout> | null = null;
@@ -64,7 +66,6 @@ export class GameController extends Emitter<ControllerEvents> {
   private generation = 0;
   private paused = false;
   private demoRound = 1;
-  /** Resolvers waiting for the showcase to leave the paused state. */
   private resumeWaiters: (() => void)[] = [];
 
   private status: GameSnapshot["status"] = "idle";
@@ -80,7 +81,6 @@ export class GameController extends Emitter<ControllerEvents> {
   private busy = false;
   private snapshot: GameSnapshot = this.buildSnapshot();
 
-  /** The renderer registers an async animator; moves wait for it to finish. */
   setAnimator(animator: Animator | null): void {
     this.animator = animator;
   }
@@ -90,50 +90,37 @@ export class GameController extends Emitter<ControllerEvents> {
   }
 
   getBoard(): { square: SquareId; kind: PieceKind; color: Faction }[] {
-    const out: { square: SquareId; kind: PieceKind; color: Faction }[] = [];
-    for (const row of this.chess.board()) {
-      for (const cell of row) {
-        if (!cell) continue;
-        out.push({ square: cell.square, kind: cell.type as PieceKind, color: cell.color as Faction });
-      }
-    }
-    return out;
+    return this.game.pieces().map((p) => ({
+      square: p.square,
+      kind: p.kind as PieceKind,
+      color: p.color,
+    }));
   }
 
-  /**
-   * Destinations for a piece, deduplicated by square (a promotion generates one
-   * move per candidate piece) and tagged so the board can colour-code them.
-   */
   legalTargets(from: SquareId): { to: SquareId; capture: boolean; castle: boolean; promotion: boolean }[] {
-    const moves = this.chess.moves({ square: from as Square, verbose: true }) as Move[];
-    const targets = new Map<SquareId, { to: SquareId; capture: boolean; castle: boolean; promotion: boolean }>();
-    for (const move of moves) {
-      const existing = targets.get(move.to);
-      const entry = existing ?? { to: move.to, capture: false, castle: false, promotion: false };
-      entry.capture = entry.capture || move.flags.includes("c") || move.flags.includes("e");
-      entry.castle = entry.castle || move.flags.includes("k") || move.flags.includes("q");
-      entry.promotion = entry.promotion || move.flags.includes("p");
-      targets.set(move.to, entry);
-    }
-    return [...targets.values()];
+    return this.game.moves({ square: from }).map((move) => ({
+      to: move.to,
+      capture: Boolean(move.captured),
+      castle: false,
+      promotion: false,
+    }));
   }
 
-  isPromotion(from: SquareId, to: SquareId): boolean {
-    const moves = this.chess.moves({ square: from as Square, verbose: true }) as Move[];
-    return moves.some((move) => move.to === to && move.flags.includes("p"));
+  isPromotion(_from: SquareId, _to: SquareId): boolean {
+    return false;
   }
 
   pieceAt(square: SquareId): { kind: PieceKind; color: Faction } | null {
-    const piece = this.chess.get(square as Square);
+    const piece = this.game.get(square);
     if (!piece) return null;
-    return { kind: piece.type as PieceKind, color: piece.color as Faction };
+    return { kind: piece.kind as PieceKind, color: piece.color };
   }
 
   isHumanTurn(): boolean {
     if (this.status !== "playing" || this.busy) return false;
     if (this.options.mode === "attract" || this.options.mode === "demo") return false;
     if (this.options.mode === "hotseat") return true;
-    return this.chess.turn() === this.options.playerColor;
+    return this.game.turn() === this.options.playerColor;
   }
 
   start(options: StartOptions): void {
@@ -144,7 +131,7 @@ export class GameController extends Emitter<ControllerEvents> {
     this.paused = false;
     if (options.mode !== "demo" || this.options.mode !== "demo") this.demoRound = 1;
     this.options = options.mode === "demo" ? { ...options, demo: options.demo ?? DEFAULT_DEMO } : options;
-    this.chess = new Chess();
+    this.game = new Xiangqi();
     this.status = "playing";
     this.result = null;
     this.thinking = false;
@@ -175,18 +162,11 @@ export class GameController extends Emitter<ControllerEvents> {
     this.publish();
   }
 
-  // ------------------------------------------------------- showcase controls
-
-  /**
-   * Halts the showcase between plies. A search already in flight is allowed to
-   * finish, but its move is held back until playback resumes.
-   */
   setPaused(paused: boolean): void {
     if (this.paused === paused) return;
     this.paused = paused;
-    if (paused) {
-      this.stopClock();
-    } else {
+    if (paused) this.stopClock();
+    else {
       this.releasePause();
       this.startClock();
     }
@@ -202,7 +182,6 @@ export class GameController extends Emitter<ControllerEvents> {
     return this.paused;
   }
 
-  /** Live pacing change — takes effect on the next ply. */
   setDemoSpeed(speed: number): void {
     if (!this.options.demo) return;
     this.options = { ...this.options, demo: { ...this.options.demo, speed: clamp(speed, 0.25, 4) } };
@@ -216,44 +195,52 @@ export class GameController extends Emitter<ControllerEvents> {
     this.publish();
   }
 
-  /** Restart the showcase immediately with the same settings. */
   restartDemo(): void {
     if (this.options.mode !== "demo") return;
     this.demoRound += 1;
     this.start({ ...this.options });
   }
 
-  private releasePause(): void {
-    const waiters = this.resumeWaiters;
-    this.resumeWaiters = [];
-    for (const resolve of waiters) resolve();
-  }
-
-  private async waitWhilePaused(): Promise<void> {
-    while (this.paused && this.status === "playing") {
-      await new Promise<void>((resolve) => this.resumeWaiters.push(resolve));
-    }
-  }
-
-  private clearRematchTimer(): void {
-    if (this.rematchTimer !== null) {
-      clearTimeout(this.rematchTimer);
-      this.rematchTimer = null;
-    }
-  }
-
-  async tryMove(from: SquareId, to: SquareId, promotion?: PieceKind): Promise<boolean> {
+  async tryMove(from: SquareId, to: SquareId, _promotion?: PieceKind): Promise<boolean> {
     if (!this.isHumanTurn()) return false;
-    return this.play(from, to, promotion);
+    return this.play(from, to);
   }
 
-  private async play(from: SquareId, to: SquareId, promotion?: PieceKind): Promise<boolean> {
-    let move: Move | null = null;
-    try {
-      move = this.chess.move({ from, to, promotion: promotion ?? "q" }) as Move;
-    } catch {
-      move = null;
+  resign(): void {
+    if (this.status !== "playing") return;
+    const loser = this.options.mode === "ai" ? this.options.playerColor : this.game.turn();
+    this.finish({ winner: loser === "w" ? "b" : "w", reason: "resignation" });
+  }
+
+  undo(): boolean {
+    if (this.status === "over") {
+      this.status = "playing";
+      this.result = null;
     }
+    if (this.status !== "playing" || this.busy || this.thinking) return false;
+    if (this.game.history().length === 0) return false;
+    this.generation += 1;
+    this.ai.cancel();
+    this.game.undo();
+    if (this.options.mode === "ai" && this.game.turn() !== this.options.playerColor) {
+      this.game.undo();
+    }
+    this.thinking = false;
+    this.busy = false;
+    this.publish();
+    return true;
+  }
+
+  dispose(): void {
+    this.stopClock();
+    this.clearRematchTimer();
+    this.releasePause();
+    this.ai.dispose();
+    this.clear();
+  }
+
+  private async play(from: SquareId, to: SquareId): Promise<boolean> {
+    const move = this.game.move({ from, to });
     if (!move) {
       this.emit("illegal", { from, to });
       return false;
@@ -262,38 +249,39 @@ export class GameController extends Emitter<ControllerEvents> {
     return true;
   }
 
-  private async commit(move: Move): Promise<void> {
+  private async commit(move: XMove): Promise<void> {
     const generation = this.generation;
     this.busy = true;
 
-    const capture = this.buildCapture(move);
-    const rook = this.buildRookTrip(move);
-    const inCheck = this.chess.isCheck();
-    const gameOver = this.chess.isGameOver();
-
     const event: MoveEvent = {
-      color: move.color as Faction,
+      color: move.color,
       kind: move.piece as PieceKind,
       from: move.from,
       to: move.to,
       san: move.san,
-      capture,
-      rook,
-      promotion: (move.promotion as PieceKind | undefined) ?? null,
-      isCheck: inCheck,
-      isGameOver: gameOver,
-      cannonScreen: null,
+      capture: move.captured
+        ? { square: move.to, kind: move.captured as PieceKind, color: move.color === "w" ? "b" : "w" }
+        : null,
+      rook: null,
+      promotion: null,
+      isCheck: move.check,
+      isGameOver: move.mate || this.game.isGameOver(),
+      cannonScreen: move.piece === "c" && move.captured ? findCannonScreen(this.game, move.from, move.to) : null,
     };
+
+    // Screen square must be found on the board *after* the move — the screen is still there.
+    // Actually after move the cannon is on `to` and screen is between from and... wait, from is empty now.
+    // Screen is between original from and to — still on board. findCannonScreen uses from/to geometry + current board.
 
     this.publish();
     this.emit("move", event);
-    if (inCheck) this.emit("check", this.chess.turn() as Faction);
+    if (move.check) this.emit("check", this.game.turn());
 
     if (this.animator) {
       try {
         await this.animator(event);
       } catch (error) {
-        console.error("[game] animator failed", error);
+        console.error("[xiangqi] animator failed", error);
       }
     }
     if (generation !== this.generation) return;
@@ -305,50 +293,19 @@ export class GameController extends Emitter<ControllerEvents> {
     void this.maybeRunEngine();
   }
 
-  private buildCapture(move: Move): MoveEvent["capture"] {
-    if (move.flags.includes("e")) {
-      const square = `${move.to[0]}${move.from[1]}`;
-      return { square, kind: "p", color: move.color === "w" ? "b" : "w" };
-    }
-    if (move.captured) {
-      return {
-        square: move.to,
-        kind: move.captured as PieceKind,
-        color: move.color === "w" ? "b" : "w",
-      };
-    }
-    return null;
-  }
-
-  private buildRookTrip(move: Move): MoveEvent["rook"] {
-    if (move.flags.includes("k")) {
-      const rank = move.color === "w" ? "1" : "8";
-      return { from: `h${rank}`, to: `f${rank}` };
-    }
-    if (move.flags.includes("q")) {
-      const rank = move.color === "w" ? "1" : "8";
-      return { from: `a${rank}`, to: `d${rank}` };
-    }
-    return null;
-  }
-
   private checkEnd(): boolean {
-    if (!this.chess.isGameOver()) return false;
-    const loser = this.chess.turn() as Faction;
-    if (this.chess.isCheckmate()) {
+    if (!this.game.isGameOver()) return false;
+    const loser = this.game.turn();
+    if (this.game.isCheckmate()) {
       this.finish({ winner: loser === "w" ? "b" : "w", reason: "checkmate" });
       return true;
     }
-    if (this.chess.isStalemate()) {
+    if (this.game.isStalemate()) {
       this.finish({ winner: null, reason: "stalemate" });
       return true;
     }
-    if (this.chess.isThreefoldRepetition()) {
+    if (this.game.isThreefold()) {
       this.finish({ winner: null, reason: "threefold" });
-      return true;
-    }
-    if (this.chess.isInsufficientMaterial()) {
-      this.finish({ winner: null, reason: "insufficient" });
       return true;
     }
     this.finish({ winner: null, reason: "draw" });
@@ -369,7 +326,6 @@ export class GameController extends Emitter<ControllerEvents> {
     this.scheduleDemoRematch();
   }
 
-  /** Keeps a recording session rolling: a new duel starts on its own. */
   private scheduleDemoRematch(): void {
     if (this.options.mode !== "demo" || !this.options.demo?.autoRematch) return;
     this.clearRematchTimer();
@@ -381,37 +337,11 @@ export class GameController extends Emitter<ControllerEvents> {
     }, DEMO_REMATCH_DELAY_MS);
   }
 
-  resign(): void {
-    if (this.status !== "playing") return;
-    const loser = this.options.mode === "ai" ? this.options.playerColor : (this.chess.turn() as Faction);
-    this.finish({ winner: loser === "w" ? "b" : "w", reason: "resignation" });
-  }
-
-  /** Undo one ply (hotseat) or a full move pair (vs computer). */
-  undo(): boolean {
-    if (this.status === "over") {
-      this.status = "playing";
-      this.result = null;
-    }
-    if (this.status !== "playing" || this.busy || this.thinking) return false;
-    if (this.chess.history().length === 0) return false;
-    this.generation += 1;
-    this.ai.cancel();
-    this.chess.undo();
-    if (this.options.mode === "ai" && this.chess.turn() !== this.options.playerColor) {
-      this.chess.undo();
-    }
-    this.thinking = false;
-    this.busy = false;
-    this.publish();
-    return true;
-  }
-
   private async maybeRunEngine(): Promise<void> {
     if (this.status !== "playing" || this.paused) return;
     const mode = this.options.mode;
     if (mode === "hotseat") return;
-    const turn = this.chess.turn() as Faction;
+    const turn = this.game.turn();
     if (mode === "ai" && turn === this.options.playerColor) return;
     if (this.thinking) return;
 
@@ -423,14 +353,12 @@ export class GameController extends Emitter<ControllerEvents> {
     const difficulty: Difficulty =
       mode === "attract" ? "medium" : demo ? (turn === "w" ? demo.white : demo.black) : this.options.difficulty;
     const started = performance.now();
-    const best = await this.ai.bestMove(this.chess.fen(), difficulty);
+    const best = await this.ai.bestMove(this.game.fen(), difficulty);
     if (generation !== this.generation || this.status !== "playing") {
       this.thinking = false;
       return;
     }
 
-    // A tiny floor on think time keeps instant replies from feeling robotic;
-    // the showcase lingers longer so captures and camera work land on camera.
     const elapsed = performance.now() - started;
     const base = mode === "attract" ? 900 : demo ? 1150 : 420;
     const floor = demo ? clamp(base / demo.speed, 120, 6000) : base;
@@ -440,7 +368,6 @@ export class GameController extends Emitter<ControllerEvents> {
       return;
     }
 
-    // Pausing holds the finished move back instead of throwing the search away.
     if (this.paused) {
       this.thinking = false;
       this.publish();
@@ -454,7 +381,7 @@ export class GameController extends Emitter<ControllerEvents> {
       this.publish();
       return;
     }
-    await this.play(best.from, best.to, best.promotion ?? undefined);
+    await this.play(best.from, best.to);
   }
 
   private startClock(): void {
@@ -476,7 +403,7 @@ export class GameController extends Emitter<ControllerEvents> {
     const now = performance.now();
     const delta = now - this.lastTickAt;
     this.lastTickAt = now;
-    const turn = this.chess.turn() as Faction;
+    const turn = this.game.turn();
     if (turn === "w") this.clock.whiteMs = Math.max(0, this.clock.whiteMs - delta);
     else this.clock.blackMs = Math.max(0, this.clock.blackMs - delta);
 
@@ -488,8 +415,27 @@ export class GameController extends Emitter<ControllerEvents> {
     this.publish();
   }
 
+  private releasePause(): void {
+    const waiters = this.resumeWaiters;
+    this.resumeWaiters = [];
+    for (const resolve of waiters) resolve();
+  }
+
+  private async waitWhilePaused(): Promise<void> {
+    while (this.paused && this.status === "playing") {
+      await new Promise<void>((resolve) => this.resumeWaiters.push(resolve));
+    }
+  }
+
+  private clearRematchTimer(): void {
+    if (this.rematchTimer !== null) {
+      clearTimeout(this.rematchTimer);
+      this.rematchTimer = null;
+    }
+  }
+
   private buildSnapshot(): GameSnapshot {
-    const verbose = this.chess.history({ verbose: true }) as Move[];
+    const verbose = this.game.history();
     const sanList = verbose.map((move) => move.san);
     const history: HistoryRow[] = [];
     for (let i = 0; i < sanList.length; i += 2) {
@@ -503,16 +449,16 @@ export class GameController extends Emitter<ControllerEvents> {
     const moves: LedgerMove[] = verbose.map((move, index) => ({
       ply: index,
       number: Math.floor(index / 2) + 1,
-      color: move.color as Faction,
+      color: move.color,
       kind: move.piece as PieceKind,
       san: move.san,
       from: move.from,
       to: move.to,
-      capture: move.flags.includes("c") || move.flags.includes("e"),
-      castle: move.flags.includes("k") || move.flags.includes("q"),
-      promotion: (move.promotion as PieceKind | undefined) ?? null,
-      check: move.san.endsWith("+"),
-      mate: move.san.endsWith("#"),
+      capture: Boolean(move.captured),
+      castle: false,
+      promotion: null,
+      check: move.check,
+      mate: move.mate,
     }));
 
     const captured: CapturedPiece[] = [];
@@ -522,12 +468,8 @@ export class GameController extends Emitter<ControllerEvents> {
       const kind = move.captured as PieceKind;
       const color: Faction = move.color === "w" ? "b" : "w";
       captured.push({ kind, color });
-      diff += color === "b" ? PIECE_VALUE[kind] : -PIECE_VALUE[kind];
-    }
-    for (const move of verbose) {
-      if (!move.promotion) continue;
-      const gain = PIECE_VALUE[move.promotion as PieceKind] - PIECE_VALUE.p;
-      diff += move.color === "w" ? gain : -gain;
+      const value = XPIECE_VALUE[move.captured as XPiece] ?? PIECE_VALUE[kind] ?? 0;
+      diff += color === "b" ? value : -value;
     }
 
     const last = verbose.length > 0 ? verbose[verbose.length - 1] : null;
@@ -537,10 +479,10 @@ export class GameController extends Emitter<ControllerEvents> {
       mode: this.options.mode,
       difficulty: this.options.difficulty,
       playerColor: this.options.playerColor,
-      turn: this.chess.turn() as Faction,
-      fen: this.chess.fen(),
-      pgn: this.chess.pgn(),
-      inCheck: this.chess.isCheck(),
+      turn: this.game.turn(),
+      fen: this.game.fen(),
+      pgn: sanList.map((san, i) => (i % 2 === 0 ? `${Math.floor(i / 2) + 1}. ${san}` : san)).join(" "),
+      inCheck: this.game.isCheck(),
       thinking: this.thinking,
       busy: this.busy,
       result: this.result,
@@ -560,7 +502,7 @@ export class GameController extends Emitter<ControllerEvents> {
       demo: this.options.mode === "demo" ? { ...(this.options.demo ?? DEFAULT_DEMO) } : null,
       paused: this.paused,
       demoRound: this.demoRound,
-      variant: "chess",
+      variant: "xiangqi",
     };
   }
 
@@ -568,14 +510,26 @@ export class GameController extends Emitter<ControllerEvents> {
     this.snapshot = this.buildSnapshot();
     this.emit("state", this.snapshot);
   }
+}
 
-  dispose(): void {
-    this.stopClock();
-    this.clearRematchTimer();
-    this.releasePause();
-    this.ai.dispose();
-    this.clear();
+/** Find the unique screen piece between a cannon's origin and capture square. */
+function findCannonScreen(game: Xiangqi, from: SquareId, to: SquareId): SquareId | null {
+  const ff = fileOf(from);
+  const fr = rankOf(from);
+  const tf = fileOf(to);
+  const tr = rankOf(to);
+  if (ff !== tf && fr !== tr) return null;
+  const df = Math.sign(tf - ff);
+  const dr = Math.sign(tr - fr);
+  let f = ff + df;
+  let r = fr + dr;
+  while (f !== tf || r !== tr) {
+    const sq = `${"abcdefghi"[f]}${r}`;
+    if (game.get(sq)) return sq;
+    f += df;
+    r += dr;
   }
+  return null;
 }
 
 function wait(ms: number): Promise<void> {

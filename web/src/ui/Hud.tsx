@@ -630,7 +630,7 @@ function CapturedRow({ label, pieces }: { label: "w" | "b"; pieces: PieceKind[] 
       <div className="flex flex-wrap gap-0.5 text-lg leading-none" style={{ color: label === "w" ? "#f0e3c6" : "#b9838a" }}>
         {pieces.length === 0 ? <span className="text-xs italic text-[#7d6f57]">—</span> : null}
         {pieces.map((kind, index) => (
-          <span key={`${kind}-${index}`}>{pieceGlyph(kind)}</span>
+          <span key={`${kind}-${index}`}>{pieceGlyph(kind, snapshot.variant)}</span>
         ))}
       </div>
     </div>

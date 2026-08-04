@@ -3,6 +3,13 @@ import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeom
 
 import type { SquareId } from "../core/types";
 import type { ArenaLook } from "./arena";
+import { BOARD_TOP, TILE } from "./boardConstants";
+import {
+  squareToWorld,
+  worldToSquare,
+  squareToWorld as geomSquareToWorld,
+  worldToSquare as geomWorldToSquare,
+} from "./boardGeometry";
 import {
   boardBorderTexture,
   captureMarkerTexture,
@@ -18,8 +25,8 @@ import {
   tileMaskTexture,
 } from "./textures";
 
-export const TILE = 1.02;
-export const BOARD_TOP = 0;
+export { TILE, BOARD_TOP } from "./boardConstants";
+export { squareToWorld, worldToSquare, setBoardVariant, getBoardGeometry } from "./boardGeometry";
 
 const FILES = "abcdefgh";
 
@@ -104,17 +111,13 @@ function easeOutBack(t: number): number {
   return 1 + (c + 1) * p * p * p + c * p * p;
 }
 
-export function squareToWorld(square: SquareId, y = BOARD_TOP): THREE.Vector3 {
-  const file = FILES.indexOf(square[0]);
-  const rank = Number(square[1]);
-  return new THREE.Vector3((file - 3.5) * TILE, y, (3.5 - (rank - 1)) * TILE);
+/** @deprecated Prefer importing from boardGeometry — kept as thin wrappers for call sites. */
+export function chessSquareToWorld(square: SquareId, y = BOARD_TOP): THREE.Vector3 {
+  return geomSquareToWorld(square, y);
 }
 
-export function worldToSquare(x: number, z: number): SquareId | null {
-  const file = Math.round(x / TILE + 3.5);
-  const rank = Math.round(3.5 - z / TILE) + 1;
-  if (file < 0 || file > 7 || rank < 1 || rank > 8) return null;
-  return `${FILES[file]}${rank}`;
+export function chessWorldToSquare(x: number, z: number): SquareId | null {
+  return geomWorldToSquare(x, z);
 }
 
 export function isLightSquare(square: SquareId): boolean {

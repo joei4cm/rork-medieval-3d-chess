@@ -1,12 +1,13 @@
-# King's Gambit — Medieval 3D Chess
+# King's Gambit — Medieval 3D Chess & 楚河汉界
 
-A cinematic 3D chess game in the browser. Two rival civilisations — a medieval European
-**Ivory Kingdom** and a Mesoamerican **Sun Empire** — face each other as sculpted, rigged
-characters that glide, strike, scream and burn away into dust on a marble-and-basalt board.
+A cinematic 3D board-game suite in the browser. Play **western chess** (Ivory Kingdom
+vs Sun Empire) or **中国象棋 / Xiangqi** across a lacquered river board — both with
+rigged characters that march, strike and burn away, and a full **English / 中文** UI.
 
 Built with **Vite + React 19 + TypeScript + three.js**, [chess.js](https://github.com/jhlywa/chess.js)
-for the rules, and a **Web Worker** search engine for the computer opponent. No backend, no
-account, no build-time asset pipeline — it is a static site.
+for western rules, a custom Xiangqi rules engine, and **Web Worker** search engines for
+the computer opponent. No backend, no account, no build-time asset pipeline — it is a
+static site.
 
 ```bash
 cd web && bun install && bun run dev
@@ -38,8 +39,14 @@ cd web && bun install && bun run dev
 
 ## Features
 
+- **Two games, one hall** — switch between western chess and 中国象棋 (Xiangqi) from the
+  main menu; each keeps its own board, rules and engine.
+- **English & 中文** — language toggle on the menu and in Settings; copy, piece names and
+  end-of-game banners follow the chosen locale.
 - **Full chess rules** — castling, en passant, promotion, check, checkmate, stalemate,
   threefold repetition, the fifty-move rule and insufficient material, all via chess.js.
+- **Full Xiangqi rules** — palace, river, elephant eye, horse leg, cannon screen, flying
+  general, checkmate / stalemate / threefold; cannon captures play as ranged firebolt kills.
 - **Rigged 3D characters, not chess pieces** — twelve sculpts (six per army), each with
   `idle`, `walk`, `attack` and `death` skeletal clips, plus weapons, shields and a floating
   rank crest.

@@ -1,5 +1,6 @@
 import { X } from "lucide-react";
 
+import { useI18n } from "../i18n/I18nProvider";
 import { ARENA_LOOKS, ARENA_ORDER, type ArenaTheme } from "../scene/arena";
 import type { QualityPreset } from "../scene/quality";
 
@@ -40,18 +41,32 @@ const PRESETS: { key: QualityPreset; label: string; note: string }[] = [
 ];
 
 export function SettingsPanel({ settings, autoDetected, gpu, fps, onChange, onClose }: SettingsPanelProps) {
+  const { t, locale, setLocale } = useI18n();
+
   return (
     <div className="pointer-events-auto absolute inset-0 z-20 flex flex-col items-center justify-center overflow-hidden bg-black/60 px-5 py-6 backdrop-blur-sm">
       <div className="mc-slate mc-goldleaf mc-rise flex max-h-full w-full min-h-0 max-w-lg flex-col p-5 sm:p-6">
         <div className="mb-4 flex shrink-0 items-center justify-between">
-          <h2 className="mc-display text-lg text-[#f2e2bd]">Settings</h2>
+          <h2 className="mc-display text-lg text-[#f2e2bd]">{t.settings.title}</h2>
           <button type="button" className="mc-btn mc-icon-btn" onClick={onClose} aria-label="Close settings">
             <X size={16} />
           </button>
         </div>
 
         <div className="mc-scroll mc-scroll-shade -mr-2 min-h-0 flex-auto overflow-y-auto pb-1 pr-2">
-        <p className="mc-display mb-2 text-[0.6rem] tracking-[0.3em] text-[#a89268]">Battleground</p>
+        <p className="mc-display mb-2 text-[0.6rem] tracking-[0.3em] text-[#a89268]">{t.settings.language}</p>
+        <div className="mb-1 grid grid-cols-2 gap-2">
+          <button type="button" className="mc-chip py-2.5" data-active={locale === "en"} onClick={() => setLocale("en")}>
+            {t.settings.english}
+          </button>
+          <button type="button" className="mc-chip py-2.5" data-active={locale === "zh"} onClick={() => setLocale("zh")}>
+            {t.settings.chinese}
+          </button>
+        </div>
+
+        <div className="mc-rule my-5" />
+
+        <p className="mc-display mb-2 text-[0.6rem] tracking-[0.3em] text-[#a89268]">{t.settings.battleground}</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {ARENA_ORDER.map((theme) => (
             <button
