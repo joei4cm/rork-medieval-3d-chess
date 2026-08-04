@@ -173,7 +173,7 @@ export function xiangqiShanshuiOverlay(): THREE.CanvasTexture {
   return tex;
 }
 
-/** Soft water with jade undertones for the river of Chu–Han. */
+/** Soft water with jade undertones and animated-looking current bands. */
 export function xiangqiRiverTexture(): THREE.CanvasTexture {
   const size = 256;
   const canvas = document.createElement("canvas");
@@ -182,30 +182,46 @@ export function xiangqiRiverTexture(): THREE.CanvasTexture {
   const ctx = canvas.getContext("2d")!;
 
   const g = ctx.createLinearGradient(0, 0, 0, size);
-  g.addColorStop(0, "#2a5a58");
-  g.addColorStop(0.35, "#3d7a78");
-  g.addColorStop(0.5, "#5a9bb0");
-  g.addColorStop(0.65, "#3d7a78");
-  g.addColorStop(1, "#1e4850");
+  g.addColorStop(0, "#163e48");
+  g.addColorStop(0.25, "#2a6a68");
+  g.addColorStop(0.5, "#4a9aaa");
+  g.addColorStop(0.75, "#2a6a68");
+  g.addColorStop(1, "#123840");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, size, size);
 
-  for (let i = 0; i < 22; i++) {
-    ctx.strokeStyle = `rgba(220,245,240,${0.06 + (i % 4) * 0.03})`;
-    ctx.lineWidth = 2;
+  // Current ribbons
+  for (let i = 0; i < 28; i++) {
+    ctx.strokeStyle = `rgba(210,245,240,${0.05 + (i % 5) * 0.035})`;
+    ctx.lineWidth = 1.5 + (i % 3);
     ctx.beginPath();
-    const y = (i / 22) * size;
+    const y = (i / 28) * size;
     ctx.moveTo(0, y);
-    for (let x = 0; x <= size; x += 6) {
-      ctx.lineTo(x, y + Math.sin(x * 0.09 + i * 0.7) * 6);
+    for (let x = 0; x <= size; x += 4) {
+      ctx.lineTo(x, y + Math.sin(x * 0.11 + i * 0.85) * 7 + Math.sin(x * 0.03 + i) * 3);
     }
     ctx.stroke();
   }
 
+  // Bright caustic flecks
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = `rgba(255,255,240,${0.04 + (i % 4) * 0.02})`;
+    ctx.beginPath();
+    ctx.ellipse(Math.random() * size, Math.random() * size, 8 + Math.random() * 14, 2 + Math.random() * 3, Math.random(), 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   // Soft foam near banks.
-  ctx.fillStyle = "rgba(200,230,220,0.12)";
-  ctx.fillRect(0, 0, size, 18);
-  ctx.fillRect(0, size - 18, size, 18);
+  const foam = ctx.createLinearGradient(0, 0, 0, 28);
+  foam.addColorStop(0, "rgba(220,245,240,0.35)");
+  foam.addColorStop(1, "rgba(220,245,240,0)");
+  ctx.fillStyle = foam;
+  ctx.fillRect(0, 0, size, 28);
+  const foam2 = ctx.createLinearGradient(0, size, 0, size - 28);
+  foam2.addColorStop(0, "rgba(220,245,240,0.35)");
+  foam2.addColorStop(1, "rgba(220,245,240,0)");
+  ctx.fillStyle = foam2;
+  ctx.fillRect(0, size - 28, size, 28);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;

@@ -1101,8 +1101,13 @@ export class SceneEngine {
         await this.armCombat(piece, victim);
         try {
           // The casters kill at range; everyone else has to walk into the blow.
-          if (RANGED_KINDS.includes(piece.kind))
-            await this.playSpellCinematic(piece, victim, from, to, strikeSquare);
+          // Xiangqi: only the cannon (and red chancellor as court mage) kill at range.
+          // The black elephant is a melee mount despite sharing kind "b".
+          const ranged =
+            this.variant === "xiangqi"
+              ? piece.kind === "c" || (piece.kind === "b" && piece.color === "w")
+              : RANGED_KINDS.includes(piece.kind);
+          if (ranged) await this.playSpellCinematic(piece, victim, from, to, strikeSquare);
           else await this.playCaptureCinematic(piece, victim, from, to, strikeSquare);
         } catch (error) {
           // A broken effect must never strand a figure in the middle of a fight:
@@ -1134,7 +1139,15 @@ export class SceneEngine {
     this.focusPoint(to, 1);
     // Taking the square: dust ring, tile dip and the figure settling its weight.
     // Softer after a kill — the strike already shook the stone.
-    this.landOn(piece, event.to, victim ? 0.7 : event.kind === "n" ? 1.25 : 1);
+    const landWeight =
+      victim
+        ? 0.7
+        : event.kind === "n"
+          ? 1.25
+          : this.variant === "xiangqi" && (event.kind === "r" || (event.kind === "b" && piece.color === "b"))
+            ? 1.45
+            : 1;
+    this.landOn(piece, event.to, landWeight);
     // Arrived: face the enemy side again rather than holding the march heading.
     // A promoting figure is about to be replaced, so it is left alone.
     if (!event.promotion) void piece.turnHome(this.tweens, 0.3);
@@ -1252,18 +1265,33 @@ export class SceneEngine {
     const stepRate = steps / time;
     const height = arc ? 0.85 + distance * 0.08 : 0.06;
     const trails = settings.captureParticles >= 34 && distance > TILE * 0.6;
-    let nextTrail = 0.18;
+    let nextTrail = 0.12;
     // A fraction of a step, so the first boot lands just after the push-off
     // instead of on the frame the figure starts to move.
     let nextStep = 0.34;
+    const xiangqi = this.variant === "xiangqi";
+    let splashed = false;
 
     if (arc) {
       // Kicking off: grit thrown back off the tile the rider leaves behind.
       piece.flareAura(0.4);
-      this.effects.spawnBurst(from.clone().setY(BOARD_TOP + 0.06), 0xc7ac82, trails ? 10 : 5, {
-        speed: 1.4,
-        life: 0.4,
+      this.effects.spawnBurst(from.clone().setY(BOARD_TOP + 0.06), xiangqi ? 0xd4b896 : 0xc7ac82, trails ? 14 : 5, {
+        speed: xiangqi ? 1.8 : 1.4,
+        life: 0.45,
       });
+      if (xiangqi) {
+        this.effects.spawnSmoke(from.clone().setY(BOARD_TOP + 0.08), {
+          count: 5,
+          radius: 0.35,
+          scale: 0.45,
+          growth: 2.2,
+          life: 0.5,
+          speed: 0.45,
+          rise: 0.2,
+          color: 0xc4b090,
+          opacity: 0.35,
+        });
+      }
     } else if (onFoot) {
       // Nobody walks backwards: square up on the destination before setting off.
       await piece.turnTowards(to, this.tweens, Math.min(0.22, 0.5 / cadence));
@@ -1290,29 +1318,182 @@ export class SceneEngine {
           const taken = t * steps;
           while (taken >= nextStep && nextStep <= steps) {
             this.footfall(piece, gait, Math.round(nextStep), trails);
+            if (xiangqi) this.xiangqiStepFx(piece, Math.round(nextStep));
             nextStep += 1;
           }
         }
-        // A thin wake of dust follows a sliding figure or a leaping rider.
-        if (trails && !marching && t >= nextTrail && t < 0.88) {
-          nextTrail += arc ? 0.2 : 0.24;
-          this.effects.spawnSmoke(piece.container.position.clone().setY(BOARD_TOP + 0.07), {
-            count: 2,
-            radius: 0.22,
-            scale: arc ? 0.4 : 0.3,
-            growth: 2.1,
-            life: 0.55,
-            speed: 0.3,
-            rise: 0.1,
-            color: 0x9d9078,
-            opacity: arc ? 0.24 : 0.16,
-          });
+        // Kind-flavoured wake for Xiangqi; generic grit for western slides.
+        if (trails && t >= nextTrail && t < 0.9) {
+          nextTrail += xiangqi ? (arc ? 0.12 : 0.16) : arc ? 0.2 : 0.24;
+          if (xiangqi) this.xiangqiMoveTrail(piece, arc);
+          else if (!marching) {
+            this.effects.spawnSmoke(piece.container.position.clone().setY(BOARD_TOP + 0.07), {
+              count: 2,
+              radius: 0.22,
+              scale: arc ? 0.4 : 0.3,
+              growth: 2.1,
+              life: 0.55,
+              speed: 0.3,
+              rise: 0.1,
+              color: 0x9d9078,
+              opacity: arc ? 0.24 : 0.16,
+            });
+          }
+        }
+        // Ford the 楚河 — splash when the path crosses the river band.
+        if (xiangqi && !splashed && from.z * to.z < 0) {
+          const crossT = Math.abs(from.z) / (Math.abs(from.z) + Math.abs(to.z));
+          if (t >= crossT) {
+            splashed = true;
+            const x = from.x + (to.x - from.x) * crossT;
+            if (this.board instanceof XiangqiBoardView) {
+              this.board.splash(x, piece.kind === "r" || piece.kind === "b" ? 1.6 : 1);
+            }
+            this.effects.spawnBurst(new THREE.Vector3(x, BOARD_TOP + 0.05, 0), 0xa8dce0, 16, {
+              speed: 1.8,
+              life: 0.55,
+              rise: 0.8,
+            });
+            this.effects.spawnSmoke(new THREE.Vector3(x, BOARD_TOP + 0.06, 0), {
+              count: 6,
+              radius: 0.4,
+              scale: 0.5,
+              growth: 2.4,
+              life: 0.7,
+              speed: 0.35,
+              rise: 0.35,
+              color: 0xc8e8e4,
+              opacity: 0.4,
+            });
+          }
         }
       },
     });
     piece.container.position.copy(to);
     if (marching) piece.stopMarch(0.2);
     if (arc) this.shake.add(0.05);
+  }
+
+  /** Per-rank wake while a Xiangqi piece is in motion. */
+  private xiangqiMoveTrail(piece: PieceView, leaping: boolean): void {
+    const at = piece.container.position.clone().setY(BOARD_TOP + 0.08);
+    switch (piece.kind) {
+      case "n": // 马 — leap grit
+        this.effects.spawnSmoke(at, {
+          count: 3,
+          radius: 0.28,
+          scale: 0.42,
+          growth: 2.3,
+          life: 0.5,
+          speed: 0.4,
+          rise: 0.18,
+          color: 0xc2a878,
+          opacity: 0.32,
+        });
+        break;
+      case "r": // 车 — bronze wheel sparks
+        this.effects.spawnBurst(at, piece.color === "w" ? 0xffd090 : 0xe8c070, leaping ? 6 : 8, {
+          speed: 2.2,
+          life: 0.35,
+          size: 0.09,
+        });
+        this.effects.spawnSmoke(at, {
+          count: 2,
+          radius: 0.2,
+          scale: 0.28,
+          growth: 2,
+          life: 0.4,
+          speed: 0.5,
+          rise: 0.08,
+          color: 0x8a7050,
+          opacity: 0.28,
+        });
+        break;
+      case "b": // 相/象 — heavy dust; elephant denser
+        this.effects.spawnSmoke(at, {
+          count: piece.color === "b" ? 5 : 3,
+          radius: 0.35,
+          scale: 0.5,
+          growth: 2.2,
+          life: 0.6,
+          speed: 0.25,
+          rise: 0.12,
+          color: 0x9a8870,
+          opacity: 0.3,
+        });
+        break;
+      case "c": // 炮 — ember trail
+        this.effects.spawnBurst(at, piece.color === "w" ? 0xff8a40 : 0xffb060, 7, {
+          speed: 1.2,
+          life: 0.45,
+          rise: 0.4,
+          size: 0.1,
+        });
+        this.effects.spawnSmoke(at, {
+          count: 3,
+          radius: 0.22,
+          scale: 0.35,
+          growth: 2.4,
+          life: 0.55,
+          speed: 0.3,
+          rise: 0.25,
+          color: 0x4a4038,
+          opacity: 0.35,
+        });
+        break;
+      case "a": // 仕/士 — soft court glow
+        piece.flareAura(0.25);
+        this.effects.spawnBurst(at, piece.color === "w" ? 0xffe0a0 : 0xd0c090, 4, {
+          speed: 0.6,
+          life: 0.5,
+          rise: 0.3,
+          size: 0.08,
+        });
+        break;
+      case "k": // 帅/将 — regal gold wake
+        this.effects.spawnBurst(at, 0xf0d080, 5, { speed: 0.9, life: 0.4, rise: 0.25, size: 0.1 });
+        break;
+      default: // 兵/卒 — march dust
+        this.effects.spawnSmoke(at, {
+          count: 2,
+          radius: 0.2,
+          scale: 0.28,
+          growth: 2,
+          life: 0.45,
+          speed: 0.28,
+          rise: 0.1,
+          color: 0xa09078,
+          opacity: 0.22,
+        });
+        break;
+    }
+  }
+
+  /** Extra footfall punctuation for Xiangqi mounts. */
+  private xiangqiStepFx(piece: PieceView, index: number): void {
+    const at = piece.container.position.clone().setY(BOARD_TOP + 0.05);
+    if (piece.kind === "b" && piece.color === "b") {
+      // Elephant stomp — heavy grit under each foot.
+      this.effects.spawnBurst(at, 0xb0a090, 8, { speed: 1.5, life: 0.4, rise: 0.15 });
+      this.effects.spawnSmoke(at, {
+        count: 4,
+        radius: 0.32,
+        scale: 0.4,
+        growth: 2,
+        life: 0.45,
+        speed: 0.35,
+        rise: 0.12,
+        color: 0x8a7a60,
+        opacity: 0.35,
+      });
+      this.shake.add(0.025);
+    } else if (piece.kind === "r") {
+      this.effects.spawnBurst(at, 0xd4a84a, index % 2 === 0 ? 4 : 3, {
+        speed: 1.8,
+        life: 0.28,
+        size: 0.07,
+      });
+    }
   }
 
   /**

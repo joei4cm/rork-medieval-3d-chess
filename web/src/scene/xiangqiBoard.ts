@@ -145,7 +145,12 @@ export class XiangqiBoardView {
   private markerMaps: Partial<Record<HighlightKind, THREE.Texture>> = {};
 
   private riverFlow: THREE.MeshStandardMaterial | null = null;
+  private riverFlow2: THREE.MeshStandardMaterial | null = null;
   private mistSprites: THREE.Mesh[] = [];
+  private foamPoints: THREE.Points | null = null;
+  private foamVelocities: Float32Array | null = null;
+  private splashRings: { mesh: THREE.Mesh; mat: THREE.MeshBasicMaterial; age: number; life: number }[] = [];
+  private splashCursor = 0;
 
   constructor() {
     this.group.name = "xiangqi-board";
@@ -221,43 +226,87 @@ export class XiangqiBoardView {
     trimMesh.position.y = BOARD_TOP - 0.01;
     this.group.add(trimMesh);
 
-    // River trench — recessed channel with flowing water.
+    // River trench — deeper channel so the water reads as a real 楚河.
     const trench = new THREE.Mesh(
-      new THREE.BoxGeometry((geom.fileCount - 1) * TILE + 0.08, 0.1, TILE * 0.95),
+      new THREE.BoxGeometry((geom.fileCount - 1) * TILE + 0.12, 0.16, TILE * 1.05),
       this.track(
         new THREE.MeshStandardMaterial({
-          color: 0x3a2818,
-          roughness: 0.9,
+          color: 0x1a2830,
+          roughness: 0.95,
           metalness: 0.02,
         }),
       ),
     );
-    trench.position.set(0, BOARD_TOP - 0.06, 0);
+    trench.position.set(0, BOARD_TOP - 0.1, 0);
     trench.receiveShadow = true;
     this.group.add(trench);
+
+    // Deep water bed under the translucent surface.
+    const deepWater = this.track(
+      new THREE.MeshStandardMaterial({
+        color: 0x0e3040,
+        roughness: 0.35,
+        metalness: 0.25,
+        emissive: 0x062028,
+        emissiveIntensity: 0.4,
+      }),
+    );
+    const deepMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.92),
+      deepWater,
+    );
+    deepMesh.rotation.x = -Math.PI / 2;
+    deepMesh.position.set(0, BOARD_TOP - 0.04, 0);
+    this.group.add(deepMesh);
 
     const riverMap = this.track(xiangqiRiverTexture());
     const river = this.track(
       new THREE.MeshStandardMaterial({
         map: riverMap,
-        color: 0x7eb8d0,
-        roughness: 0.22,
-        metalness: 0.35,
+        color: 0x6ec4c0,
+        roughness: 0.18,
+        metalness: 0.4,
         transparent: true,
-        opacity: 0.82,
-        emissive: 0x1a4058,
-        emissiveIntensity: 0.35,
+        opacity: 0.72,
+        emissive: 0x1a5060,
+        emissiveIntensity: 0.45,
+        depthWrite: false,
       }),
     );
     this.riverMaterial = river;
     this.riverFlow = river;
     const riverMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.88),
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.9),
       river,
     );
     riverMesh.rotation.x = -Math.PI / 2;
-    riverMesh.position.set(0, BOARD_TOP - 0.01, 0);
+    riverMesh.position.set(0, BOARD_TOP - 0.005, 0);
     this.group.add(riverMesh);
+
+    // Counter-flow foam / highlight sheet.
+    const foamMap = this.track(xiangqiRiverTexture());
+    foamMap.repeat.set(5, 1);
+    const foam = this.track(
+      new THREE.MeshStandardMaterial({
+        map: foamMap,
+        color: 0xd8f0ea,
+        roughness: 0.3,
+        metalness: 0.15,
+        transparent: true,
+        opacity: 0.35,
+        emissive: 0x80c0b0,
+        emissiveIntensity: 0.25,
+        depthWrite: false,
+      }),
+    );
+    this.riverFlow2 = foam;
+    const foamMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.78),
+      foam,
+    );
+    foamMesh.rotation.x = -Math.PI / 2;
+    foamMesh.position.set(0, BOARD_TOP + 0.002, 0);
+    this.group.add(foamMesh);
 
     // Soft mist sprites over the river.
     const mistMat = this.track(
@@ -268,16 +317,19 @@ export class XiangqiBoardView {
         depthWrite: false,
       }),
     );
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < 8; i++) {
       const mist = new THREE.Mesh(
-        new THREE.PlaneGeometry(TILE * 1.8, TILE * 0.7),
+        new THREE.PlaneGeometry(TILE * 1.6, TILE * 0.55),
         this.track(mistMat.clone()),
       );
       mist.rotation.x = -Math.PI / 2;
-      mist.position.set((i - 2) * TILE * 1.6, BOARD_TOP + 0.04, (i % 2 === 0 ? 0.08 : -0.08) * TILE);
+      mist.position.set((i - 3.5) * TILE * 1.15, BOARD_TOP + 0.05, (i % 2 === 0 ? 0.12 : -0.12) * TILE);
       this.group.add(mist);
       this.mistSprites.push(mist);
     }
+
+    this.initFoamParticles((geom.fileCount - 1) * TILE);
+    this.initSplashRings();
 
     // River banks — slightly raised lips of darker wood.
     const bankMat = this.track(
@@ -447,6 +499,94 @@ export class XiangqiBoardView {
   }
 
   /** Low carved peaks along the far shores — reads as 山水 without blocking play. */
+  private initFoamParticles(riverWidth: number): void {
+    const count = 64;
+    const positions = new Float32Array(count * 3);
+    const velocities = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      positions[i * 3] = (Math.random() - 0.5) * riverWidth;
+      positions[i * 3 + 1] = BOARD_TOP + 0.02 + Math.random() * 0.04;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * TILE * 0.7;
+      velocities[i * 3] = 0.15 + Math.random() * 0.35;
+      velocities[i * 3 + 1] = 0;
+      velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.05;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    const mat = this.track(
+      new THREE.PointsMaterial({
+        map: this.track(radialTexture("rgba(230,250,245,0.9)", "rgba(230,250,245,0)")),
+        size: 0.14,
+        transparent: true,
+        opacity: 0.65,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    this.foamPoints = new THREE.Points(geo, mat);
+    this.foamPoints.frustumCulled = false;
+    this.foamVelocities = velocities;
+    this.group.add(this.foamPoints);
+  }
+
+  private initSplashRings(): void {
+    for (let i = 0; i < 6; i++) {
+      const mat = this.track(
+        new THREE.MeshBasicMaterial({
+          map: this.track(shockwaveTexture()),
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          color: 0xb8e8e0,
+        }),
+      );
+      const mesh = new THREE.Mesh(new THREE.CircleGeometry(1, 28), mat);
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.visible = false;
+      this.group.add(mesh);
+      this.splashRings.push({ mesh, mat, age: 0, life: 0.5 });
+    }
+  }
+
+  private updateFoam(delta: number): void {
+    if (!this.foamPoints || !this.foamVelocities) return;
+    const pos = this.foamPoints.geometry.getAttribute("position") as THREE.BufferAttribute;
+    const halfW = TILE * 4.2;
+    for (let i = 0; i < pos.count; i++) {
+      let x = pos.getX(i) + this.foamVelocities[i * 3] * delta;
+      let y = pos.getY(i) + this.foamVelocities[i * 3 + 1] * delta;
+      let z = pos.getZ(i) + this.foamVelocities[i * 3 + 2] * delta;
+      this.foamVelocities[i * 3 + 1] *= Math.exp(-delta * 3.5);
+      this.foamVelocities[i * 3 + 1] -= delta * 0.35;
+      if (y < BOARD_TOP + 0.015) {
+        y = BOARD_TOP + 0.015 + Math.random() * 0.02;
+        this.foamVelocities[i * 3 + 1] = 0;
+        z = (Math.random() - 0.5) * TILE * 0.65;
+      }
+      if (x > halfW) x = -halfW;
+      if (x < -halfW) x = halfW;
+      pos.setXYZ(i, x, y, z);
+    }
+    pos.needsUpdate = true;
+  }
+
+  private updateSplashRings(delta: number): void {
+    for (const ring of this.splashRings) {
+      if (!ring.mesh.visible && ring.age >= 0) continue;
+      ring.age += delta;
+      if (ring.age < 0) continue;
+      const t = ring.age / ring.life;
+      if (t >= 1) {
+        ring.mesh.visible = false;
+        ring.mat.opacity = 0;
+        continue;
+      }
+      ring.mesh.visible = true;
+      ring.mesh.scale.setScalar(0.2 + t * 1.6);
+      ring.mat.opacity = (1 - t) * 0.65;
+    }
+  }
+
   private addShoreMountains(width: number, _depth: number): void {
     const geom = getBoardGeometry();
     const rock = this.track(
@@ -746,20 +886,60 @@ export class XiangqiBoardView {
     ripple.ring.scale.setScalar(0.25);
   }
 
+  /**
+   * Splash where a piece fords the 楚河 — expanding rings + foam kick at world X.
+   */
+  splash(worldX: number, strength = 1): void {
+    const s = Math.max(0.4, Math.min(2, strength));
+    for (let i = 0; i < 2; i++) {
+      const ring = this.splashRings[this.splashCursor++ % this.splashRings.length];
+      ring.age = -i * 0.08;
+      ring.life = 0.55 + s * 0.2;
+      ring.mesh.visible = true;
+      ring.mesh.position.set(worldX + (i === 0 ? 0 : 0.08), BOARD_TOP + 0.03, (i - 0.5) * 0.12);
+      ring.mesh.scale.setScalar(0.15);
+      ring.mat.opacity = 0.7 * s;
+      ring.mat.color.setHex(i === 0 ? 0xb8e8e0 : 0x7ec8d0);
+    }
+    // Kick foam particles upward near the crossing.
+    if (this.foamPoints && this.foamVelocities) {
+      const pos = this.foamPoints.geometry.getAttribute("position") as THREE.BufferAttribute;
+      for (let i = 0; i < pos.count; i++) {
+        if (Math.abs(pos.getX(i) - worldX) < TILE * 1.2 && Math.random() > 0.55) {
+          this.foamVelocities[i * 3 + 1] = 0.6 + Math.random() * 0.9 * s;
+          this.foamVelocities[i * 3] = (Math.random() - 0.5) * 0.4;
+          this.foamVelocities[i * 3 + 2] = (Math.random() - 0.5) * 0.5;
+        }
+      }
+    }
+  }
+
   update(delta: number): void {
     this.elapsed += delta;
 
-    // Slow river flow + mist drift.
+    // Dual-layer river flow — surface and counter foam.
     if (this.riverFlow?.map) {
-      this.riverFlow.map.offset.x = (this.elapsed * 0.04) % 1;
+      this.riverFlow.map.offset.x = (this.elapsed * 0.07) % 1;
       this.riverFlow.needsUpdate = true;
+    }
+    if (this.riverFlow2?.map) {
+      this.riverFlow2.map.offset.x = (-this.elapsed * 0.11) % 1;
+      this.riverFlow2.opacity = 0.28 + 0.1 * Math.sin(this.elapsed * 1.4);
+      this.riverFlow2.needsUpdate = true;
     }
     for (let i = 0; i < this.mistSprites.length; i++) {
       const mist = this.mistSprites[i];
       const mat = mist.material as THREE.MeshBasicMaterial;
-      mat.opacity = 0.22 + 0.12 * Math.sin(this.elapsed * 0.7 + i);
-      mist.position.x += Math.sin(this.elapsed * 0.3 + i) * delta * 0.05;
+      mat.opacity = 0.2 + 0.16 * Math.sin(this.elapsed * 0.85 + i * 0.9);
+      mist.position.x += Math.sin(this.elapsed * 0.35 + i) * delta * 0.08;
+      // Soft wrap so mist stays over the river band.
+      const half = TILE * 4.5;
+      if (mist.position.x > half) mist.position.x -= half * 2;
+      if (mist.position.x < -half) mist.position.x += half * 2;
     }
+
+    this.updateFoam(delta);
+    this.updateSplashRings(delta);
 
     for (const slot of this.slots.values()) {
       if (!slot.kind) {
