@@ -184,7 +184,7 @@ function lacquerDisc(faction: Faction, kind: PieceKind, radius = 0.3): THREE.Gro
   return g;
 }
 
-/** Overlapping lamellar 札甲 rows on the torso. */
+/** Overlapping lamellar 札甲 — fine scales, not chunky Lego bricks. */
 function addLamellar(
   g: THREE.Group,
   armor: THREE.Material,
@@ -194,20 +194,20 @@ function addLamellar(
   rows: number,
 ): void {
   for (let row = 0; row < rows; row++) {
-    const y = y0 + row * 0.045 * s;
-    const n = 8;
+    const y = y0 + row * 0.032 * s;
+    const n = 12;
     for (let i = 0; i < n; i++) {
-      const a = (i / n) * Math.PI * 2 + (row % 2) * 0.2;
+      const a = (i / n) * Math.PI * 2 + (row % 2) * (Math.PI / n);
       addBox(
         g,
-        0.055 * s,
         0.038 * s,
-        0.018 * s,
+        0.028 * s,
+        0.012 * s,
         i % 2 === 0 ? armor : scale,
-        Math.sin(a) * 0.12 * s,
+        Math.sin(a) * 0.115 * s,
         y,
-        Math.cos(a) * 0.12 * s,
-        0,
+        Math.cos(a) * 0.115 * s,
+        0.15,
         a,
         0,
       );
