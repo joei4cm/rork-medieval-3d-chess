@@ -250,7 +250,10 @@ export class XiangqiBoardView {
       }),
     );
     for (let i = 0; i < 5; i++) {
-      const mist = new THREE.Mesh(new THREE.PlaneGeometry(TILE * 1.8, TILE * 0.7), mistMat.clone());
+      const mist = new THREE.Mesh(
+        new THREE.PlaneGeometry(TILE * 1.8, TILE * 0.7),
+        this.track(mistMat.clone()),
+      );
       mist.rotation.x = -Math.PI / 2;
       mist.position.set((i - 2) * TILE * 1.6, BOARD_TOP + 0.04, (i % 2 === 0 ? 0.08 : -0.08) * TILE);
       this.group.add(mist);

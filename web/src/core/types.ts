@@ -159,16 +159,3 @@ export const PIECE_LABEL: Record<PieceKind, string> = {
   c: "Cannon",
 };
 
-/** Map Xiangqi kinds onto the closest animated sculpt for presentation.
- * Prefer {@link xiangqiSculpt} from `xiangqi/identity` — it is faction-aware
- * (相→丞相 court mage, 象→大象 animal warrior).
- */
-export const XIANGQI_MODEL_KIND: Record<"p" | "n" | "b" | "r" | "c" | "a" | "k", "p" | "n" | "b" | "r" | "q" | "k"> = {
-  k: "k",
-  a: "b",
-  b: "b",
-  n: "n",
-  r: "r",
-  c: "q",
-  p: "p",
-};

@@ -79,12 +79,14 @@ const DIFFICULTY_SHORT: Record<string, string> = {
   hard: "Warlord",
 };
 
-const CAMERA_BUTTONS: { key: CameraPreset; label: string }[] = [
-  { key: "white", label: "Ivory" },
-  { key: "black", label: "Obsidian" },
-  { key: "top", label: "Overhead" },
-  { key: "cinematic", label: "Cinematic" },
-];
+const CAMERA_PRESETS: CameraPreset[] = ["white", "black", "top", "cinematic"];
+
+const CAMERA_LABEL_FALLBACK: Record<CameraPreset, string> = {
+  white: "Ivory",
+  black: "Obsidian",
+  top: "Overhead",
+  cinematic: "Cinematic",
+};
 
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -121,6 +123,12 @@ export function Hud({
 }: HudProps) {
   const { t } = useI18n();
   const variant = snapshot.variant ?? "chess";
+  const cameraButtons = CAMERA_PRESETS.map((key) => {
+    let label = CAMERA_LABEL_FALLBACK[key];
+    if (key === "white") label = variant === "xiangqi" ? t.menu.red : t.menu.ivory;
+    else if (key === "black") label = variant === "xiangqi" ? t.menu.black : t.menu.obsidian;
+    return { key, label };
+  });
   const [chronicleOpen, setChronicleOpen] = useState(false);
   const [cameraMenuOpen, setCameraMenuOpen] = useState(false);
   const [transportOpen, setTransportOpen] = useState(true);
@@ -373,7 +381,7 @@ export function Hud({
               <div className="mc-cam-menu mc-slate absolute right-0 top-[calc(100%+0.4rem)] z-30 w-44 p-2">
                 <p className="mc-display px-1 pb-1.5 text-[0.52rem] tracking-[0.3em] text-[#a89268]">Camera</p>
                 <div className="flex flex-col gap-1">
-                  {CAMERA_BUTTONS.map((button) => (
+                  {cameraButtons.map((button) => (
                     <button
                       key={button.key}
                       type="button"

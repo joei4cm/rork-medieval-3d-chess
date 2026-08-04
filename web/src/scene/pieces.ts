@@ -476,8 +476,8 @@ export class PieceView {
       sizeAttenuation: true,
     });
     const badge = new THREE.Sprite(material);
-    badge.scale.setScalar(BADGE_SCALE[this.kind] * (this.xiangqiStyle ? 1.15 : 1));
-    badge.position.y = PIECE_HEIGHT[this.kind] * (this.xiangqiStyle ? 0.82 : 1) + BADGE_LIFT + (this.xiangqiStyle ? 0.1 : 0);
+    badge.scale.setScalar(BADGE_SCALE[this.kind] * this.badgeScaleMul());
+    badge.position.y = this.badgeBaseY();
     badge.renderOrder = 40;
     badge.visible = this.badgeWanted;
     badge.frustumCulled = false;
@@ -534,13 +534,30 @@ export class PieceView {
     const token = new THREE.Mesh(sharedTokenGeometry(), material);
     token.rotation.x = -Math.PI / 2;
     token.position.y = 0.055;
-    token.scale.setScalar(TOKEN_SCALE[this.kind] * (this.xiangqiStyle ? 0.85 : 1));
+    token.scale.setScalar(TOKEN_SCALE[this.kind] * this.tokenScaleMul());
     token.renderOrder = 12;
     token.frustumCulled = false;
     token.visible = false;
     this.token = token;
     this.container.add(token);
     this.tokenMaterial = material;
+  }
+
+  /** Crest height above the feet — lower for Xiangqi figures sitting on lacquer discs. */
+  private badgeBaseY(): number {
+    return (
+      PIECE_HEIGHT[this.kind] * (this.xiangqiStyle ? 0.82 : 1) +
+      BADGE_LIFT +
+      (this.xiangqiStyle ? 0.1 : 0)
+    );
+  }
+
+  private badgeScaleMul(): number {
+    return this.xiangqiStyle ? 1.15 : 1;
+  }
+
+  private tokenScaleMul(): number {
+    return this.xiangqiStyle ? 0.85 : 1;
   }
 
   private updateToken(delta: number, alarmPulse: number): void {
@@ -558,7 +575,7 @@ export class PieceView {
     const settle = this.aura * this.aura;
     const pop =
       1 + (this.selected ? 0.14 : this.hovered ? 0.07 : 0) + alarmPulse * 0.2 + settle * 0.16;
-    token.scale.setScalar(TOKEN_SCALE[this.kind] * pop * this.tokenFade);
+    token.scale.setScalar(TOKEN_SCALE[this.kind] * this.tokenScaleMul() * pop * this.tokenFade);
     token.position.y = 0.055 + (this.selected ? 0.05 : 0);
 
     // Blows and the check alarm burn straight through the plate.
@@ -580,10 +597,9 @@ export class PieceView {
     material.opacity = this.badgeOpacity * this.fade;
 
     const bob = Math.sin(elapsed * 1.5 + this.phase) * 0.022;
-    badge.position.y =
-      PIECE_HEIGHT[this.kind] + BADGE_LIFT + bob + (this.selected ? 0.05 : 0);
+    badge.position.y = this.badgeBaseY() + bob + (this.selected ? 0.05 : 0);
     const pop = 1 + (this.selected ? 0.16 : this.hovered ? 0.08 : 0) + alarmPulse * 0.22;
-    badge.scale.setScalar(BADGE_SCALE[this.kind] * pop);
+    badge.scale.setScalar(BADGE_SCALE[this.kind] * this.badgeScaleMul() * pop);
   }
 
   /**

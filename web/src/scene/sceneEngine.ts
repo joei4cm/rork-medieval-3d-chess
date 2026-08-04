@@ -979,6 +979,14 @@ export class SceneEngine {
   // ------------------------------------------------------------------- pieces
 
   private rebuildPieces(): void {
+    // Prefer a full board swap when the live ruleset drifted from the scene flag.
+    // setVariant itself ends in rebuildPieces, so bail out after handing off.
+    const liveVariant = this.controller.getSnapshot().variant ?? this.variant;
+    if (liveVariant !== this.variant) {
+      this.setVariant(liveVariant);
+      return;
+    }
+
     // Any beat still running belongs to the old board: invalidate it first so it
     // cannot re-register the figure it is carrying once its awaits resolve.
     this.boardRevision += 1;
@@ -1000,12 +1008,7 @@ export class SceneEngine {
     if (!this.factory.isReady) return;
 
     const settings = QUALITY_SETTINGS[this.preset];
-    const xiangqi = this.controller.getSnapshot().variant === "xiangqi" || this.variant === "xiangqi";
-    // Keep the scene flag aligned with the live ruleset.
-    if (xiangqi && this.variant !== "xiangqi") {
-      this.variant = "xiangqi";
-      setBoardVariant("xiangqi");
-    }
+    const xiangqi = this.variant === "xiangqi";
     for (const entry of this.controller.getBoard()) {
       const view = this.factory.create(entry.kind, entry.color, {
         contactShadows: settings.contactShadows,

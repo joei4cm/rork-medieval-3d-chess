@@ -11,6 +11,7 @@
 import * as THREE from "three";
 
 import type { Faction, PieceKind } from "../core/types";
+import { xiangqiGlyph } from "../xiangqi/identity";
 
 const SIZE = 256;
 
@@ -445,6 +446,8 @@ export function rankBadgeTexture(kind: PieceKind, faction: Faction): THREE.Canva
 export function disposeRankBadgeTextures(): void {
   for (const texture of cache.values()) texture.dispose();
   cache.clear();
+  for (const texture of xiangqiCache.values()) texture.dispose();
+  xiangqiCache.clear();
 }
 
 const xiangqiCache = new Map<string, THREE.CanvasTexture>();
@@ -456,18 +459,7 @@ export function xiangqiRankBadgeTexture(kind: PieceKind, faction: Faction): THRE
   if (cached) return cached;
 
   const { canvas, ctx } = canvas2d();
-  const glyph = (() => {
-    try {
-      // Lazy import avoided — duplicate the glyph table used by identity.
-      const table: Record<string, Record<string, string>> = {
-        w: { k: "帅", a: "仕", b: "相", n: "傌", r: "俥", c: "炮", p: "兵" },
-        b: { k: "将", a: "士", b: "象", n: "馬", r: "車", c: "砲", p: "卒" },
-      };
-      return table[faction][kind] ?? "棋";
-    } catch {
-      return "棋";
-    }
-  })();
+  const glyph = xiangqiGlyph(kind, faction);
 
   const field = faction === "w" ? "#c62828" : "#1a1512";
   const ink = faction === "w" ? "#ffe8c8" : "#e8d5a0";
@@ -508,11 +500,7 @@ export function xiangqiTacticalTokenTexture(kind: PieceKind, faction: Faction): 
   if (cached) return cached;
 
   const { canvas, ctx } = canvas2d();
-  const glyphTable: Record<string, Record<string, string>> = {
-    w: { k: "帅", a: "仕", b: "相", n: "傌", r: "俥", c: "炮", p: "兵" },
-    b: { k: "将", a: "士", b: "象", n: "馬", r: "車", c: "砲", p: "卒" },
-  };
-  const glyph = glyphTable[faction][kind] ?? "棋";
+  const glyph = xiangqiGlyph(kind, faction);
   const field = faction === "w" ? "#e8c078" : "#2a221c";
   const ink = faction === "w" ? "#8b1515" : "#e8d5a0";
   const rim = faction === "w" ? "#8b1e1e" : "#c9a45a";
