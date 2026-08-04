@@ -19,6 +19,7 @@ import { QUALITY_SETTINGS, type QualityPreset } from "./quality";
 import { SPELL_LOOK, SpellLightPool, SpellOrb } from "./spells";
 import { disposeStrikeAssets, spawnGroundWave, spawnPillar, spawnSlash } from "./strikes";
 import { Ease, type Easing, TweenManager, wait } from "./tween";
+import { xiangqiSculpt } from "../xiangqi/identity";
 
 type BoardSurface = BoardView | XiangqiBoardView;
 
@@ -621,6 +622,11 @@ export class SceneEngine {
     for (const unsub of this.controllerUnsubs) unsub();
     this.controllerUnsubs = [];
     this.controller = controller;
+    const liveVariant = controller.getSnapshot().variant;
+    if (liveVariant && liveVariant !== this.variant) {
+      // Align board geometry immediately when the ruleset changes.
+      this.setVariant(liveVariant);
+    }
     this.controller.setAnimator((event) => this.animateMove(event));
     this.controllerUnsubs.push(
       this.controller.on("state", this.onStateBound),
@@ -679,9 +685,15 @@ export class SceneEngine {
    */
   private adoptClip(keys: TemplateKey[], name: ClipName, clip: THREE.AnimationClip): void {
     const wanted = new Set<TemplateKey>(keys);
-    const sculptOf = (kind: PieceKind): PieceKind => (kind === "a" ? "b" : kind === "c" ? "q" : kind);
     const install = (piece: PieceView): void => {
-      if (wanted.has(`${piece.color}${sculptOf(piece.kind)}`) || wanted.has(`${piece.color}${piece.kind}`)) {
+      const sculpt = piece.isXiangqi
+        ? xiangqiSculpt(piece.kind, piece.color)
+        : piece.kind === "a"
+          ? "b"
+          : piece.kind === "c"
+            ? "q"
+            : piece.kind;
+      if (wanted.has(`${piece.color}${sculpt}`) || wanted.has(`${piece.color}${piece.kind}`)) {
         piece.installClip(name, clip);
       }
     };
@@ -967,6 +979,14 @@ export class SceneEngine {
   // ------------------------------------------------------------------- pieces
 
   private rebuildPieces(): void {
+    // Prefer a full board swap when the live ruleset drifted from the scene flag.
+    // setVariant itself ends in rebuildPieces, so bail out after handing off.
+    const liveVariant = this.controller.getSnapshot().variant ?? this.variant;
+    if (liveVariant !== this.variant) {
+      this.setVariant(liveVariant);
+      return;
+    }
+
     // Any beat still running belongs to the old board: invalidate it first so it
     // cannot re-register the figure it is carrying once its awaits resolve.
     this.boardRevision += 1;
@@ -988,11 +1008,13 @@ export class SceneEngine {
     if (!this.factory.isReady) return;
 
     const settings = QUALITY_SETTINGS[this.preset];
+    const xiangqi = this.variant === "xiangqi";
     for (const entry of this.controller.getBoard()) {
       const view = this.factory.create(entry.kind, entry.color, {
         contactShadows: settings.contactShadows,
         idleAnimation: settings.characterAnimations,
         rankBadge: this.rankBadges,
+        xiangqiStyle: xiangqi,
       });
       if (this.tactical) view.setFlat(true);
       view.container.position.copy(squareToWorld(entry.square));
@@ -1005,8 +1027,9 @@ export class SceneEngine {
     const column = Math.floor(index / 8);
     const row = index % 8;
     const side = color === "b" ? 1 : -1;
-    const x = side * (TILE * 4 + 0.95 + column * 0.62);
-    const z = -TILE * 3.2 + row * 0.92;
+    const edge = this.variant === "xiangqi" ? TILE * 5.1 : TILE * 4;
+    const x = side * (edge + 0.95 + column * 0.62);
+    const z = -TILE * (this.variant === "xiangqi" ? 4.2 : 3.2) + row * 0.92;
     return new THREE.Vector3(x, 0, z);
   }
 
@@ -1140,6 +1163,7 @@ export class SceneEngine {
         contactShadows: QUALITY_SETTINGS[this.preset].contactShadows,
         idleAnimation: QUALITY_SETTINGS[this.preset].characterAnimations,
         rankBadge: this.rankBadges,
+        xiangqiStyle: this.variant === "xiangqi",
       });
       if (this.tactical) view.setFlat(true);
       view.container.position.copy(to);

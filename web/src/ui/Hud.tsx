@@ -24,7 +24,8 @@ import {
   X,
 } from "lucide-react";
 
-import type { GameSnapshot, LedgerMove, PieceKind } from "../core/types";
+import type { Faction, GameSnapshot, GameVariant, LedgerMove, PieceKind } from "../core/types";
+import { useI18n } from "../i18n/I18nProvider";
 import { ARENA_LOOKS, ARENA_ORDER, type ArenaTheme } from "../scene/arena";
 import type { CameraPreset, ShowcaseCamera } from "../scene/sceneEngine";
 import { Crest, Hourglass, pieceGlyph } from "./Heraldry";
@@ -78,12 +79,14 @@ const DIFFICULTY_SHORT: Record<string, string> = {
   hard: "Warlord",
 };
 
-const CAMERA_BUTTONS: { key: CameraPreset; label: string }[] = [
-  { key: "white", label: "Ivory" },
-  { key: "black", label: "Obsidian" },
-  { key: "top", label: "Overhead" },
-  { key: "cinematic", label: "Cinematic" },
-];
+const CAMERA_PRESETS: CameraPreset[] = ["white", "black", "top", "cinematic"];
+
+const CAMERA_LABEL_FALLBACK: Record<CameraPreset, string> = {
+  white: "Ivory",
+  black: "Obsidian",
+  top: "Overhead",
+  cinematic: "Cinematic",
+};
 
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -118,6 +121,14 @@ export function Hud({
   onShowcaseCamera,
   onToggleCinema,
 }: HudProps) {
+  const { t } = useI18n();
+  const variant = snapshot.variant ?? "chess";
+  const cameraButtons = CAMERA_PRESETS.map((key) => {
+    let label = CAMERA_LABEL_FALLBACK[key];
+    if (key === "white") label = variant === "xiangqi" ? t.menu.red : t.menu.ivory;
+    else if (key === "black") label = variant === "xiangqi" ? t.menu.black : t.menu.obsidian;
+    return { key, label };
+  });
   const [chronicleOpen, setChronicleOpen] = useState(false);
   const [cameraMenuOpen, setCameraMenuOpen] = useState(false);
   const [transportOpen, setTransportOpen] = useState(true);
@@ -207,14 +218,18 @@ export function Hud({
   const spoils = (
     <div className="mc-slate mc-goldleaf px-4 py-3">
       <div className="flex items-center justify-between">
-        <p className="mc-display text-[0.6rem] tracking-[0.34em] text-[#a89268]">Spoils</p>
+        <p className="mc-display text-[0.6rem] tracking-[0.34em] text-[#a89268]">{t.hud.spoils}</p>
         <span className="mc-display text-[0.72rem] text-[#e2c98f]">
-          {diff === 0 ? "even" : diff > 0 ? `ivory +${diff}` : `obsidian +${-diff}`}
+          {diff === 0
+            ? "even"
+            : diff > 0
+              ? `${variant === "xiangqi" ? t.menu.red : t.menu.ivory} +${diff}`
+              : `${variant === "xiangqi" ? t.menu.black : t.menu.obsidian} +${-diff}`}
         </span>
       </div>
       <div className="mt-2 space-y-1.5">
-        <CapturedRow label="w" pieces={whiteTaken.map((piece) => piece.kind)} />
-        <CapturedRow label="b" pieces={blackTaken.map((piece) => piece.kind)} />
+        <CapturedRow label="w" pieces={whiteTaken} variant={variant} />
+        <CapturedRow label="b" pieces={blackTaken} variant={variant} />
       </div>
     </div>
   );
@@ -224,30 +239,34 @@ export function Hud({
       {/* Top bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 flex items-start justify-between gap-3 p-3 sm:p-4">
         <div className="mc-slate mc-goldleaf pointer-events-auto flex items-center gap-3 px-3 py-2.5">
-          <Crest faction={snapshot.turn} size={26} active />
+          <Crest faction={snapshot.turn} size={26} active variant={variant} />
           <div>
             <p className="mc-display text-[0.58rem] tracking-[0.3em] text-[#a89268]">
               {demo
-                ? `Showcase · duel ${snapshot.demoRound}`
+                ? `${t.menu.showcase} · ${t.hud.round(snapshot.demoRound)}`
                 : snapshot.status === "over"
-                  ? "Battle ended"
+                  ? "—"
                   : snapshot.thinking
-                    ? "Council of war"
-                    : "To move"}
+                    ? t.hud.thinking
+                    : t.hud.yourMove}
             </p>
             <p className="mc-display text-sm text-[#f2e2bd]">
               {snapshot.status === "over"
                 ? "—"
                 : snapshot.thinking
-                  ? "Thinking…"
+                  ? t.hud.thinking
                   : snapshot.turn === "w"
-                    ? "Ivory"
-                    : "Obsidian"}
+                    ? variant === "xiangqi"
+                      ? t.hud.redToMove
+                      : t.hud.ivoryToMove
+                    : variant === "xiangqi"
+                      ? t.hud.blackToMove
+                      : t.hud.obsidianToMove}
             </p>
           </div>
           {snapshot.inCheck && snapshot.status === "playing" ? (
             <span className="mc-danger-flash mc-display rounded-sm border border-[#a8342a] px-2 py-1 text-[0.6rem] tracking-[0.24em] text-[#ff9a8a]">
-              CHECK
+              {variant === "xiangqi" ? t.hud.checkXiangqi : t.hud.check}
             </span>
           ) : null}
           {snapshot.thinking ? (
@@ -362,7 +381,7 @@ export function Hud({
               <div className="mc-cam-menu mc-slate absolute right-0 top-[calc(100%+0.4rem)] z-30 w-44 p-2">
                 <p className="mc-display px-1 pb-1.5 text-[0.52rem] tracking-[0.3em] text-[#a89268]">Camera</p>
                 <div className="flex flex-col gap-1">
-                  {CAMERA_BUTTONS.map((button) => (
+                  {cameraButtons.map((button) => (
                     <button
                       key={button.key}
                       type="button"
@@ -623,14 +642,24 @@ export function Hud({
   );
 }
 
-function CapturedRow({ label, pieces }: { label: "w" | "b"; pieces: PieceKind[] }) {
+function CapturedRow({
+  label,
+  pieces,
+  variant,
+}: {
+  label: "w" | "b";
+  pieces: { kind: PieceKind; color: Faction }[];
+  variant: GameVariant;
+}) {
   return (
     <div className="flex items-center gap-2">
-      <Crest faction={label} size={14} />
+      <Crest faction={label} size={14} variant={variant} />
       <div className="flex flex-wrap gap-0.5 text-lg leading-none" style={{ color: label === "w" ? "#f0e3c6" : "#b9838a" }}>
         {pieces.length === 0 ? <span className="text-xs italic text-[#7d6f57]">—</span> : null}
-        {pieces.map((kind, index) => (
-          <span key={`${kind}-${index}`}>{pieceGlyph(kind, snapshot.variant)}</span>
+        {pieces.map((piece, index) => (
+          <span key={`${piece.kind}-${piece.color}-${index}`} title={piece.kind}>
+            {pieceGlyph(piece.kind, variant, piece.color)}
+          </span>
         ))}
       </div>
     </div>

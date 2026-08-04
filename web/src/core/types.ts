@@ -159,13 +159,3 @@ export const PIECE_LABEL: Record<PieceKind, string> = {
   c: "Cannon",
 };
 
-/** Map Xiangqi kinds onto the closest animated sculpt for presentation. */
-export const XIANGQI_MODEL_KIND: Record<"p" | "n" | "b" | "r" | "c" | "a" | "k", "p" | "n" | "b" | "r" | "q" | "k"> = {
-  k: "k",
-  a: "b",
-  b: "b",
-  n: "n",
-  r: "r",
-  c: "q",
-  p: "p",
-};

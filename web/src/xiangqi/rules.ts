@@ -4,6 +4,8 @@
  * FEN lists ranks from 9 → 0 (Black's back rank first), matching common computer Xiangqi.
  */
 
+import { XIANGQI_GLYPH } from "./identity";
+
 export type Side = "w" | "b";
 export type XPiece = "k" | "a" | "b" | "n" | "r" | "c" | "p";
 export type XSquare = string;
@@ -61,10 +63,7 @@ export const XPIECE_VALUE: Record<XPiece, number> = {
   k: 0,
 };
 
-export const XPIECE_GLYPH: Record<Side, Record<XPiece, string>> = {
-  w: { k: "帅", a: "仕", b: "相", n: "傌", r: "俥", c: "炮", p: "兵" },
-  b: { k: "将", a: "士", b: "象", n: "馬", r: "車", c: "砲", p: "卒" },
-};
+export const XPIECE_GLYPH = XIANGQI_GLYPH;
 
 export function fileOf(square: XSquare): number {
   return FILES.indexOf(square[0]);

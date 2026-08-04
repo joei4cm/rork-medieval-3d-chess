@@ -616,7 +616,7 @@ const LOADOUT: Record<Faction, Record<PieceKind, Loadout>> = {
     n: { main: "longsword", off: "heaterShield" },
     r: { main: "warhammer", off: "towerShield" },
     p: { main: "spear", off: "roundShield" },
-    a: { main: "crystalStaff" },
+    a: { main: "scepter" },
     c: { main: "scepter" },
   },
   b: {
@@ -626,7 +626,7 @@ const LOADOUT: Record<Faction, Record<PieceKind, Loadout>> = {
     n: { main: "macuahuitl", off: "chimalli" },
     r: { main: "stoneMaul", off: "greatChimalli" },
     p: { main: "tepoztopilli", off: "chimalli" },
-    a: { main: "serpentStaff" },
+    a: { main: "sunScepter" },
     c: { main: "sunScepter" },
   },
 };

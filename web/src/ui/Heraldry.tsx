@@ -1,15 +1,43 @@
 import { memo } from "react";
 
-import type { Faction, PieceKind } from "../core/types";
+import type { Faction, GameVariant, PieceKind } from "../core/types";
+import { xiangqiGlyph } from "../xiangqi/identity";
 
 interface CrestProps {
   faction: Faction;
   size?: number;
   active?: boolean;
+  /** Xiangqi uses a round seal crest instead of the western shield. */
+  variant?: GameVariant;
 }
 
-/** Faction crest: a shield with a lion rampant silhouette. */
-export const Crest = memo(function Crest({ faction, size = 34, active = false }: CrestProps) {
+/** Faction crest: western heater shield, or a lacquer seal for Xiangqi. */
+export const Crest = memo(function Crest({ faction, size = 34, active = false, variant = "chess" }: CrestProps) {
+  if (variant === "xiangqi") {
+    const field = faction === "w" ? "#c62828" : "#1a1a1a";
+    const ink = faction === "w" ? "#ffe8c8" : "#f0e0b0";
+    const trim = active ? "#f6dfa5" : "#8a6522";
+    const mark = faction === "w" ? "红" : "黑";
+    return (
+      <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden="true">
+        <circle cx="20" cy="20" r="17" fill={field} stroke={trim} strokeWidth="2.2" />
+        <circle cx="20" cy="20" r="13.5" fill="none" stroke={ink} strokeWidth="1" opacity="0.55" />
+        <text
+          x="20"
+          y="21"
+          textAnchor="middle"
+          dominantBaseline="central"
+          fill={ink}
+          fontSize="14"
+          fontFamily="'Noto Serif SC','Songti SC',serif"
+          fontWeight="700"
+        >
+          {mark}
+        </text>
+      </svg>
+    );
+  }
+
   const field = faction === "w" ? "#e9dfc8" : "#1d1e24";
   const charge = faction === "w" ? "#3c5fa8" : "#a8342a";
   const trim = active ? "#f6dfa5" : "#8a6522";
@@ -61,7 +89,7 @@ export const Hourglass = memo(function Hourglass({ ratio, urgent }: HourglassPro
   );
 });
 
-const GLYPHS: Record<PieceKind, string> = {
+const CHESS_GLYPHS: Record<PieceKind, string> = {
   k: "♚",
   q: "♛",
   r: "♜",
@@ -72,18 +100,11 @@ const GLYPHS: Record<PieceKind, string> = {
   c: "砲",
 };
 
-export function pieceGlyph(kind: PieceKind, variant: "chess" | "xiangqi" = "chess"): string {
-  if (variant === "xiangqi") {
-    const x: Record<string, string> = {
-      k: "将",
-      a: "士",
-      b: "象",
-      n: "马",
-      r: "车",
-      c: "炮",
-      p: "兵",
-    };
-    return x[kind] ?? GLYPHS[kind];
-  }
-  return GLYPHS[kind];
+export function pieceGlyph(
+  kind: PieceKind,
+  variant: GameVariant = "chess",
+  faction: Faction = "w",
+): string {
+  if (variant === "xiangqi") return xiangqiGlyph(kind, faction);
+  return CHESS_GLYPHS[kind] ?? "?";
 }
