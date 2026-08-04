@@ -448,8 +448,10 @@ export class PieceView {
         if (!mesh.isMesh) return;
         this.meshes.push(mesh);
         mesh.userData.piece = this;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+        // Honour whatever the figure factory chose (GLB scans skip receiveShadow;
+        // castShadow is gated by quality via xiangqiGlbFactory.setCastShadows).
+        if (mesh.castShadow === undefined) mesh.castShadow = true;
+        mesh.receiveShadow = false;
         const material = mesh.material as THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial;
         if ((material as THREE.MeshStandardMaterial)?.isMeshStandardMaterial) {
           installDissolve(material as THREE.MeshStandardMaterial, this.dissolveUniforms, 0);

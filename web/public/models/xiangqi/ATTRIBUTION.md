@@ -12,6 +12,6 @@ You may share and adapt these works commercially, provided you give appropriate 
 | `warrior_d.glb` | Terracotta Warrior 2 | Xinyue124 | https://doi.org/10.5281/zenodo.10298070 |
 | `horse.glb` | Chinese Terracotta Warrior Horse | richardwals | https://doi.org/10.5281/zenodo.10344674 |
 
-Meshes were Draco-compressed / simplified with [glTF-Transform](https://gltf-transform.dev/) for web delivery; original authorship remains with the creators above.
+Meshes were Draco-compressed / simplified with [glTF-Transform](https://gltf-transform.dev/) for web delivery; originals were recentred to unit height (soles on y=0). `warrior_d` was reoriented so its longest axis is upright. Original authorship remains with the creators above.
 
 **Not used (license):** Scan-the-World Qin museum photogrammetry on Zenodo is often **CC BY-NC-SA** (non-commercial). Those were intentionally skipped so this game build stays redistribution-safe.
