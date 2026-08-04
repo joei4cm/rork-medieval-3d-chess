@@ -12,7 +12,7 @@ import {
   selectMarkerTexture,
   shockwaveTexture,
 } from "./textures";
-import { xiangqiRiverTexture, xiangqiShanshuiOverlay, xiangqiWoodTexture } from "./xiangqiTextures";
+import { xiangqiRiverTexture, xiangqiWoodTexture } from "./xiangqiTextures";
 import type { HighlightKind } from "./board";
 
 const HIGHLIGHT_COLORS: Record<HighlightKind, number> = {
@@ -177,24 +177,23 @@ export class XiangqiBoardView {
     slab.castShadow = true;
     this.group.add(slab);
 
-    // Ink-wash 山水 overlay floating just above the lacquer face.
-    const shanshui = this.track(
-      new THREE.MeshBasicMaterial({
-        map: this.track(xiangqiShanshuiOverlay()),
-        transparent: true,
-        opacity: 0.92,
-        depthWrite: false,
+    // Clean playing face — warm lacquer, no muddy landscape wash.
+    const faceMat = this.track(
+      new THREE.MeshStandardMaterial({
+        map: this.track(xiangqiWoodTexture(false)),
+        color: 0xf0d9a0,
+        roughness: 0.52,
+        metalness: 0.04,
       }),
     );
-    const landscape = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE + 0.2, (geom.rankCount - 1) * TILE + 0.2),
-      shanshui,
+    const face = new THREE.Mesh(
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE + 0.15, (geom.rankCount - 1) * TILE + 0.15),
+      faceMat,
     );
-    landscape.rotation.x = -Math.PI / 2;
-    landscape.position.y = BOARD_TOP + 0.004;
-    this.group.add(landscape);
-
-    this.addShoreMountains(width, depth);
+    face.rotation.x = -Math.PI / 2;
+    face.position.y = BOARD_TOP + 0.002;
+    face.receiveShadow = true;
+    this.group.add(face);
 
     // Vermilion lacquer rim / frame.
     const rim = this.track(
@@ -226,145 +225,73 @@ export class XiangqiBoardView {
     trimMesh.position.y = BOARD_TOP - 0.01;
     this.group.add(trimMesh);
 
-    // River trench — deeper channel so the water reads as a real 楚河.
-    const trench = new THREE.Mesh(
-      new THREE.BoxGeometry((geom.fileCount - 1) * TILE + 0.12, 0.16, TILE * 1.05),
-      this.track(
-        new THREE.MeshStandardMaterial({
-          color: 0x1a2830,
-          roughness: 0.95,
-          metalness: 0.02,
-        }),
-      ),
-    );
-    trench.position.set(0, BOARD_TOP - 0.1, 0);
-    trench.receiveShadow = true;
-    this.group.add(trench);
-
-    // Deep water bed under the translucent surface.
-    const deepWater = this.track(
+    // Classic 楚河汉界 band — calligraphy strip between the camps (not a fake 3D river).
+    const riverBand = this.track(
       new THREE.MeshStandardMaterial({
-        color: 0x0e3040,
-        roughness: 0.35,
-        metalness: 0.25,
-        emissive: 0x062028,
-        emissiveIntensity: 0.4,
+        map: this.track(xiangqiWoodTexture(false)),
+        color: 0xe0c078,
+        roughness: 0.55,
+        metalness: 0.08,
+        emissive: 0x3a2010,
+        emissiveIntensity: 0.08,
       }),
     );
-    const deepMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.92),
-      deepWater,
+    this.riverMaterial = riverBand;
+    const bandMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE - 0.08, TILE * 0.92),
+      riverBand,
     );
-    deepMesh.rotation.x = -Math.PI / 2;
-    deepMesh.position.set(0, BOARD_TOP - 0.04, 0);
-    this.group.add(deepMesh);
+    bandMesh.rotation.x = -Math.PI / 2;
+    bandMesh.position.set(0, BOARD_TOP + 0.006, 0);
+    this.group.add(bandMesh);
 
-    const riverMap = this.track(xiangqiRiverTexture());
-    const river = this.track(
+    // Soft shimmer sheet over the calligraphy band (keeps a hint of water without drowning the board).
+    const shimmerMap = this.track(xiangqiRiverTexture());
+    shimmerMap.repeat.set(4, 1);
+    const shimmer = this.track(
       new THREE.MeshStandardMaterial({
-        map: riverMap,
-        color: 0x6ec4c0,
-        roughness: 0.18,
-        metalness: 0.4,
+        map: shimmerMap,
+        color: 0x88c0b8,
+        roughness: 0.25,
+        metalness: 0.2,
         transparent: true,
-        opacity: 0.72,
-        emissive: 0x1a5060,
-        emissiveIntensity: 0.45,
+        opacity: 0.18,
+        emissive: 0x306858,
+        emissiveIntensity: 0.15,
         depthWrite: false,
       }),
     );
-    this.riverMaterial = river;
-    this.riverFlow = river;
-    const riverMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.9),
-      river,
+    this.riverFlow = shimmer;
+    this.riverFlow2 = null;
+    const shimmerMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE - 0.2, TILE * 0.7),
+      shimmer,
     );
-    riverMesh.rotation.x = -Math.PI / 2;
-    riverMesh.position.set(0, BOARD_TOP - 0.005, 0);
-    this.group.add(riverMesh);
+    shimmerMesh.rotation.x = -Math.PI / 2;
+    shimmerMesh.position.set(0, BOARD_TOP + 0.01, 0);
+    this.group.add(shimmerMesh);
 
-    // Counter-flow foam / highlight sheet.
-    const foamMap = this.track(xiangqiRiverTexture());
-    foamMap.repeat.set(5, 1);
-    const foam = this.track(
-      new THREE.MeshStandardMaterial({
-        map: foamMap,
-        color: 0xd8f0ea,
-        roughness: 0.3,
-        metalness: 0.15,
-        transparent: true,
-        opacity: 0.35,
-        emissive: 0x80c0b0,
-        emissiveIntensity: 0.25,
-        depthWrite: false,
-      }),
-    );
-    this.riverFlow2 = foam;
-    const foamMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.78),
-      foam,
-    );
-    foamMesh.rotation.x = -Math.PI / 2;
-    foamMesh.position.set(0, BOARD_TOP + 0.002, 0);
-    this.group.add(foamMesh);
-
-    // Soft mist sprites over the river.
-    const mistMat = this.track(
-      new THREE.MeshBasicMaterial({
-        map: this.track(radialTexture("rgba(200,230,255,0.55)", "rgba(200,230,255,0)")),
-        transparent: true,
-        opacity: 0.35,
-        depthWrite: false,
-      }),
-    );
-    for (let i = 0; i < 8; i++) {
-      const mist = new THREE.Mesh(
-        new THREE.PlaneGeometry(TILE * 1.6, TILE * 0.55),
-        this.track(mistMat.clone()),
-      );
-      mist.rotation.x = -Math.PI / 2;
-      mist.position.set((i - 3.5) * TILE * 1.15, BOARD_TOP + 0.05, (i % 2 === 0 ? 0.12 : -0.12) * TILE);
-      this.group.add(mist);
-      this.mistSprites.push(mist);
-    }
-
-    this.initFoamParticles((geom.fileCount - 1) * TILE);
+    this.initFoamParticles((geom.fileCount - 1) * TILE * 0.6);
     this.initSplashRings();
 
-    // River banks — slightly raised lips of darker wood.
-    const bankMat = this.track(
-      new THREE.MeshStandardMaterial({
-        map: this.track(xiangqiWoodTexture(true)),
-        color: 0x8a6238,
-        roughness: 0.7,
-        metalness: 0.04,
-      }),
-    );
-    for (const z of [0.52 * TILE, -0.52 * TILE]) {
-      const bank = new THREE.Mesh(
-        new THREE.BoxGeometry((geom.fileCount - 1) * TILE, 0.04, 0.12),
-        bankMat,
-      );
-      bank.position.set(0, BOARD_TOP + 0.01, z);
-      bank.receiveShadow = true;
-      this.group.add(bank);
-    }
+    // Large traditional calligraphy sitting in the band.
+    this.addRiverCalligraphy();
 
     // Palace floors — inlaid darker wood panels under the nine-palace.
     const palaceMat = this.track(
       new THREE.MeshStandardMaterial({
         map: this.track(xiangqiWoodTexture(true)),
-        color: 0xa87840,
-        roughness: 0.5,
-        metalness: 0.1,
+        color: 0xb88848,
+        roughness: 0.48,
+        metalness: 0.12,
         emissive: 0x2a1808,
-        emissiveIntensity: 0.08,
+        emissiveIntensity: 0.1,
       }),
     );
     for (const baseRank of [0, 7]) {
       const zCentre = (geom.halfRanks - (baseRank + 1)) * TILE;
       const palace = new THREE.Mesh(
-        new THREE.BoxGeometry(2 * TILE + 0.06, 0.03, 2 * TILE + 0.06),
+        new THREE.BoxGeometry(2 * TILE + 0.06, 0.025, 2 * TILE + 0.06),
         palaceMat,
       );
       palace.position.set(0, BOARD_TOP + 0.008, zCentre);
@@ -372,8 +299,8 @@ export class XiangqiBoardView {
       this.group.add(palace);
     }
 
-    // Grid lines
-    const lineMat = this.track(new THREE.LineBasicMaterial({ color: 0x2a1810, transparent: true, opacity: 0.9 }));
+    // Grid lines — classic dark vermilion on lacquer.
+    const lineMat = this.track(new THREE.LineBasicMaterial({ color: 0x6a1810, transparent: true, opacity: 0.95 }));
     this.lineMaterial = lineMat;
     const points: THREE.Vector3[] = [];
     const yLine = BOARD_TOP + 0.018;
@@ -455,9 +382,6 @@ export class XiangqiBoardView {
 
     const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
     this.group.add(new THREE.LineSegments(lineGeo, lineMat));
-
-    this.addRiverLabel("楚 河", -2.35 * TILE, "#102838");
-    this.addRiverLabel("汉 界", 2.35 * TILE, "#4a1010");
 
     this.markerMaps.select = this.track(selectMarkerTexture());
     this.markerMaps.move = this.track(moveMarkerTexture());
@@ -646,6 +570,42 @@ export class XiangqiBoardView {
       crown.position.set(x, BOARD_TOP + 0.2, z);
       this.group.add(trunk, crown);
     }
+  }
+
+  /** Large 楚河 · 汉界 calligraphy in the centre band — the classic board signature. */
+  private addRiverCalligraphy(): void {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1024;
+    canvas.height = 160;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, 1024, 160);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "bold 92px 'Noto Serif SC','Songti SC','STSong',serif";
+    ctx.fillStyle = "#5a1810";
+    ctx.fillText("楚  河", 280, 82);
+    ctx.fillText("汉  界", 744, 82);
+    // Centre divider ornament
+    ctx.fillStyle = "#8a3020";
+    ctx.beginPath();
+    ctx.arc(512, 80, 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = "#8a3020";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(480, 80);
+    ctx.lineTo(544, 80);
+    ctx.stroke();
+
+    const tex = this.track(new THREE.CanvasTexture(canvas));
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const mat = this.track(
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.92, depthWrite: false }),
+    );
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(TILE * 7.2, TILE * 0.72), mat);
+    mesh.rotation.x = -Math.PI / 2;
+    mesh.position.set(0, BOARD_TOP + 0.014, 0);
+    this.group.add(mesh);
   }
 
   private addRiverLabel(text: string, x: number, color: string): void {
@@ -917,14 +877,15 @@ export class XiangqiBoardView {
   update(delta: number): void {
     this.elapsed += delta;
 
-    // Dual-layer river flow — surface and counter foam.
+    // Dual-layer river flow — soft shimmer over the calligraphy band.
     if (this.riverFlow?.map) {
-      this.riverFlow.map.offset.x = (this.elapsed * 0.07) % 1;
+      this.riverFlow.map.offset.x = (this.elapsed * 0.06) % 1;
+      this.riverFlow.opacity = 0.12 + 0.08 * Math.sin(this.elapsed * 1.2);
       this.riverFlow.needsUpdate = true;
     }
     if (this.riverFlow2?.map) {
-      this.riverFlow2.map.offset.x = (-this.elapsed * 0.11) % 1;
-      this.riverFlow2.opacity = 0.28 + 0.1 * Math.sin(this.elapsed * 1.4);
+      this.riverFlow2.map.offset.x = (-this.elapsed * 0.09) % 1;
+      this.riverFlow2.opacity = 0.1 + 0.06 * Math.sin(this.elapsed * 1.4);
       this.riverFlow2.needsUpdate = true;
     }
     for (let i = 0; i < this.mistSprites.length; i++) {
