@@ -15,8 +15,13 @@ import { radialTexture } from "./textures";
 import { Ease, type TweenManager } from "./tween";
 import { attachWeapons, type AttachedArms } from "./weapons";
 import {
-  buildXiangqiPiece,
+  buildHanSash,
+  buildXiangqiChariot,
+  buildXiangqiElephant,
+  CHARIOT_RIDER_LIFT,
+  CHARIOT_RIDER_SCALE,
 } from "./xiangqiFigures";
+import { xiangqiDiscTexture } from "./xiangqiTextures";
 
 /** Rendered height (world units, 1 unit = 1 board square) per piece kind. */
 export const PIECE_HEIGHT: Record<PieceKind, number> = {
@@ -357,13 +362,14 @@ export class PieceView {
     this.container.name = `piece_${color}${kind}`;
     this.container.add(this.runtime);
     this.runtime.add(this.visual);
-    const xiangqi = Boolean(options.xiangqiStyle);
-    if (!xiangqi) this.visual.add(model);
+    // Same Meshy GLB warriors as western chess — Xiangqi identity is lacquer + Han accents.
+    this.visual.add(model);
     this.container.userData.piece = this;
 
+    const xiangqi = Boolean(options.xiangqiStyle);
+
     this.collider = new THREE.Mesh(sharedColliderGeometry(kind), sharedColliderMaterial());
-    this.collider.position.y = (xiangqi ? 0.55 : PIECE_HEIGHT[kind]) * (xiangqi ? 1 : 0.55);
-    if (xiangqi) this.collider.position.y = 0.4;
+    this.collider.position.y = PIECE_HEIGHT[kind] * (xiangqi ? 0.5 : 0.55);
     this.collider.castShadow = false;
     this.collider.receiveShadow = false;
     this.collider.userData.piece = this;
@@ -379,25 +385,23 @@ export class PieceView {
       uDissolveEmber: { value: new THREE.Color(DISSOLVE_EMBER[color]) },
     };
 
-    if (!xiangqi) {
-      model.traverse((node) => {
-        const mesh = node as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.userData.piece = this;
-        const source = mesh.material as THREE.MeshStandardMaterial;
-        const material = source.clone();
-        applyFactionLook(material, color, ownLivery);
-        installDissolve(material, this.dissolveUniforms, 0.85);
-        mesh.material = material;
-        this.materials.push(material);
-        this.meshes.push(mesh);
-      });
-    }
+    model.traverse((node) => {
+      const mesh = node as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.piece = this;
+      const source = mesh.material as THREE.MeshStandardMaterial;
+      const material = source.clone();
+      applyFactionLook(material, color, ownLivery);
+      installDissolve(material, this.dissolveUniforms, 0.85);
+      mesh.material = material;
+      this.materials.push(material);
+      this.meshes.push(mesh);
+    });
 
     const accent = FACTION_ACCENT[color];
-    const footprint = xiangqi ? 0.55 : 1;
+    const footprint = xiangqi ? 0.38 : 1;
 
     const glowMaterial = new THREE.MeshBasicMaterial({
       map: sharedGlowTexture(),
@@ -419,7 +423,7 @@ export class PieceView {
         map: sharedShadowTexture(),
         color: 0x000000,
         transparent: true,
-        opacity: xiangqi ? 0.32 : 0.55,
+        opacity: xiangqi ? 0.48 : 0.55,
         depthWrite: false,
       });
       this.shadow = new THREE.Mesh(sharedDiscGeometry(), shadowMaterial);
@@ -431,34 +435,98 @@ export class PieceView {
     }
 
     if (xiangqi) {
-      // Distinct procedural Xiangqi sculpt — lacquer disc + rank silhouette.
-      const figure = buildXiangqiPiece(kind, color);
-      this.visual.add(figure);
-      this.visual.position.y = 0;
-      this.visual.scale.setScalar(1);
-      figure.traverse((node) => {
-        const mesh = node as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        this.meshes.push(mesh);
-        mesh.userData.piece = this;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        const material = mesh.material as THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
-        if ((material as THREE.MeshStandardMaterial)?.isMeshStandardMaterial) {
-          installDissolve(material as THREE.MeshStandardMaterial, this.dissolveUniforms, 0);
-          this.materials.push(material as THREE.MeshStandardMaterial);
-        }
+      // Quiet lacquer foot — thin disc with seal; crest badge carries the rank.
+      const discMap = xiangqiDiscTexture(kind, color);
+      const discMat = new THREE.MeshStandardMaterial({
+        map: discMap,
+        roughness: 0.45,
+        metalness: 0.12,
+        envMapIntensity: 0.85,
       });
-      this.glow.scale.setScalar(0.7);
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.05, 28), discMat);
+      disc.position.y = 0.028;
+      disc.castShadow = true;
+      disc.receiveShadow = true;
+      disc.userData.piece = this;
+      this.container.add(disc);
+      this.materials.push(discMat);
+
+      if (kind === "b" && color === "b") {
+        // 象 — procedural elephant replaces the western sculpt underfoot.
+        this.visual.clear();
+        const elephant = buildXiangqiElephant(color);
+        this.visual.add(elephant);
+        this.visual.position.y = 0.05;
+        this.visual.scale.setScalar(1);
+        elephant.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          this.meshes.push(mesh);
+          mesh.userData.piece = this;
+          const material = mesh.material as THREE.MeshStandardMaterial;
+          if (material?.isMeshStandardMaterial) {
+            installDissolve(material, this.dissolveUniforms, 0);
+            this.materials.push(material);
+          }
+        });
+      } else if (kind === "r") {
+        // 車 — chariot body under a scaled GLB rider.
+        const chariot = buildXiangqiChariot(color);
+        chariot.userData.piece = this;
+        this.container.add(chariot);
+        chariot.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          this.meshes.push(mesh);
+          mesh.userData.piece = this;
+          const material = mesh.material as THREE.MeshStandardMaterial;
+          if (material?.isMeshStandardMaterial) {
+            installDissolve(material, this.dissolveUniforms, 0);
+            this.materials.push(material);
+          }
+        });
+        this.visual.position.y = CHARIOT_RIDER_LIFT;
+        this.visual.scale.setScalar(CHARIOT_RIDER_SCALE);
+        const sash = buildHanSash(color);
+        this.visual.add(sash);
+        sash.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          this.meshes.push(mesh);
+          mesh.userData.piece = this;
+          const material = mesh.material as THREE.MeshStandardMaterial;
+          if (material?.isMeshStandardMaterial) {
+            installDissolve(material, this.dissolveUniforms, 0);
+            this.materials.push(material);
+          }
+        });
+      } else {
+        this.visual.position.y = 0.055;
+        this.visual.scale.setScalar(0.82);
+        const sash = buildHanSash(color);
+        this.visual.add(sash);
+        sash.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          this.meshes.push(mesh);
+          mesh.userData.piece = this;
+          const material = mesh.material as THREE.MeshStandardMaterial;
+          if (material?.isMeshStandardMaterial) {
+            installDissolve(material, this.dissolveUniforms, 0);
+            this.materials.push(material);
+          }
+        });
+      }
     }
 
     this.badgeWanted = options.rankBadge !== false;
     this.xiangqiStyle = xiangqi;
     this.buildBadge();
 
-    if (!xiangqi) {
-      this.setupAnimations(model, clips, options.idleAnimation !== false);
-      this.equipArms(model, unit, baseY, false);
+    this.setupAnimations(model, clips, options.idleAnimation !== false);
+    // Elephant has no hands; chariot rider + others get Han-leaning arms.
+    if (!(xiangqi && kind === "b" && color === "b")) {
+      this.equipArms(model, unit, baseY, xiangqi);
     }
   }
 
@@ -554,16 +622,21 @@ export class PieceView {
 
   /** Crest height above the feet — lower for compact Xiangqi lacquer figures. */
   private badgeBaseY(): number {
-    if (this.xiangqiStyle) return 0.85 + BADGE_LIFT;
+    // Xiangqi GLB figures sit on a lacquer disc and are scaled ~0.82.
+    if (this.xiangqiStyle) {
+      const scale = this.kind === "r" ? CHARIOT_RIDER_SCALE : this.kind === "b" && this.color === "b" ? 1 : 0.82;
+      const lift = this.kind === "r" ? CHARIOT_RIDER_LIFT : this.kind === "b" && this.color === "b" ? 0.55 : 0.055;
+      return PIECE_HEIGHT[this.kind] * scale + lift + BADGE_LIFT;
+    }
     return PIECE_HEIGHT[this.kind] + BADGE_LIFT;
   }
 
   private badgeScaleMul(): number {
-    return this.xiangqiStyle ? 0.85 : 1;
+    return this.xiangqiStyle ? 0.9 : 1;
   }
 
   private tokenScaleMul(): number {
-    return this.xiangqiStyle ? 0.85 : 1;
+    return this.xiangqiStyle ? 0.9 : 1;
   }
 
   private updateToken(delta: number, alarmPulse: number): void {
