@@ -4,40 +4,49 @@ import type { Faction, PieceKind } from "../core/types";
 import { xiangqiGlyph } from "../xiangqi/identity";
 
 /**
- * Full procedural Xiangqi roster — each rank is a distinct silhouette so the
- * board reads at a glance without western chess GLBs.
+ * Qin terracotta-warrior style Xiangqi figures.
+ * Each rank is a distinct armored silhouette on a lacquer identity disc.
  */
+
+type WarriorRank = "general" | "officer" | "scholar" | "cavalry" | "infantry" | "gunner";
 
 function mat(
   color: number,
-  roughness = 0.65,
-  metalness = 0.08,
+  roughness = 0.72,
+  metalness = 0.06,
   emissive = 0x000000,
   emissiveIntensity = 0,
 ): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({ color, roughness, metalness, emissive, emissiveIntensity });
 }
 
-function factionPalette(faction: Faction) {
+/** Terracotta clay palette — 秦俑灰陶 + faction paint accents. */
+function clayPalette(faction: Faction) {
   if (faction === "w") {
     return {
-      lacquer: 0xc62828,
+      clay: 0xb8a090,
+      clayDark: 0x8a7060,
+      armor: 0x6a5848,
+      scale: 0x5a4a3c,
+      lacquer: 0xa01818,
+      trim: 0xc9a050,
       wood: 0xe8c078,
       ink: 0x6a1010,
-      trim: 0xd4a84a,
-      cloth: 0x8b1e1e,
-      dark: 0x5a2018,
-      skin: 0xe0b898,
+      bronze: 0xb08a40,
+      boot: 0x3a2a20,
     };
   }
   return {
+    clay: 0x7a7068,
+    clayDark: 0x4a4440,
+    armor: 0x3a3834,
+    scale: 0x2e2c28,
     lacquer: 0x1a1512,
+    trim: 0xc9a45a,
     wood: 0x2a221c,
     ink: 0xe8d5a0,
-    trim: 0xc9a45a,
-    cloth: 0x2a2420,
-    dark: 0x0e0c0a,
-    skin: 0xc4a888,
+    bronze: 0x8a7040,
+    boot: 0x1a1612,
   };
 }
 
@@ -51,33 +60,62 @@ function enableShadows(root: THREE.Object3D): void {
   });
 }
 
-/** Thick lacquer disc with a large carved character — the traditional piece body. */
-function lacquerDisc(faction: Faction, kind: PieceKind, radius = 0.38): THREE.Group {
-  const p = factionPalette(faction);
+function addBox(
+  parent: THREE.Object3D,
+  w: number,
+  h: number,
+  d: number,
+  material: THREE.Material,
+  x: number,
+  y: number,
+  z: number,
+  rx = 0,
+  ry = 0,
+  rz = 0,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  mesh.position.set(x, y, z);
+  mesh.rotation.set(rx, ry, rz);
+  parent.add(mesh);
+  return mesh;
+}
+
+function addCyl(
+  parent: THREE.Object3D,
+  rTop: number,
+  rBot: number,
+  h: number,
+  material: THREE.Material,
+  x: number,
+  y: number,
+  z: number,
+  rx = 0,
+  ry = 0,
+  rz = 0,
+  segments = 12,
+): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(rTop, rBot, h, segments), material);
+  mesh.position.set(x, y, z);
+  mesh.rotation.set(rx, ry, rz);
+  parent.add(mesh);
+  return mesh;
+}
+
+/** Compact lacquer identity disc under the warrior. */
+function lacquerDisc(faction: Faction, kind: PieceKind, radius = 0.34): THREE.Group {
+  const p = clayPalette(faction);
   const group = new THREE.Group();
   group.name = "lacquer_disc";
 
-  const body = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 1.04, 0.14, 40), mat(p.wood, 0.55, 0.08));
-  body.position.y = 0.07;
-  group.add(body);
-
+  addCyl(group, radius, radius * 1.05, 0.1, mat(p.wood, 0.55, 0.08), 0, 0.05, 0, 0, 0, 0, 36);
   const rim = new THREE.Mesh(
-    new THREE.TorusGeometry(radius * 0.92, 0.028, 8, 40),
-    mat(faction === "w" ? p.lacquer : p.trim, 0.4, 0.35),
+    new THREE.TorusGeometry(radius * 0.9, 0.022, 8, 36),
+    mat(faction === "w" ? p.lacquer : p.trim, 0.4, 0.4),
   );
   rim.rotation.x = Math.PI / 2;
-  rim.position.y = 0.145;
+  rim.position.y = 0.105;
   group.add(rim);
 
-  // Face plate
-  const face = new THREE.Mesh(
-    new THREE.CylinderGeometry(radius * 0.82, radius * 0.82, 0.02, 40),
-    mat(faction === "w" ? 0xf0d8a8 : 0x1c1814, 0.5, 0.05),
-  );
-  face.position.y = 0.15;
-  group.add(face);
-
-  // Character as a canvas decal on the face
   const glyph = xiangqiGlyph(kind, faction);
   const size = 256;
   const canvas = document.createElement("canvas");
@@ -88,391 +126,477 @@ function lacquerDisc(faction: Faction, kind: PieceKind, radius = 0.38): THREE.Gr
   ctx.fillStyle = faction === "w" ? "#7a1212" : "#e8d5a0";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = `bold ${Math.round(size * 0.62)}px "Noto Serif SC","Songti SC","SimSun",serif`;
-  ctx.fillText(glyph, size / 2, size / 2 + 6);
+  ctx.font = `bold ${Math.round(size * 0.55)}px "Noto Serif SC","Songti SC","SimSun",serif`;
+  ctx.fillText(glyph, size / 2, size / 2 + 4);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   const glyphMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
-  const glyphPlane = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.72, 32), glyphMat);
+  const glyphPlane = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.62, 28), glyphMat);
   glyphPlane.rotation.x = -Math.PI / 2;
-  glyphPlane.position.y = 0.162;
+  glyphPlane.position.y = 0.112;
   group.add(glyphPlane);
 
   return group;
 }
 
-function hanFigure(faction: Faction, height = 0.55): THREE.Group {
-  const p = factionPalette(faction);
+interface WarriorOpts {
+  faction: Faction;
+  rank: WarriorRank;
+  /** Overall height of the standing figure (not including disc). */
+  height?: number;
+  holdSpear?: boolean;
+  holdSword?: boolean;
+  holdStaff?: boolean;
+  holdTablet?: boolean;
+  holdShield?: boolean;
+}
+
+/**
+ * Standing Qin terracotta warrior — armored torso, articulated limbs,
+ * facial planes, and rank-specific headgear (兵马俑 style).
+ */
+function buildTerracottaWarrior(opts: WarriorOpts): THREE.Group {
+  const {
+    faction,
+    rank,
+    height = 0.78,
+    holdSpear = false,
+    holdSword = false,
+    holdStaff = false,
+    holdTablet = false,
+    holdShield = false,
+  } = opts;
+  const p = clayPalette(faction);
   const g = new THREE.Group();
-  const robe = mat(p.cloth, 0.78, 0.04);
-  const trim = mat(p.trim, 0.4, 0.5);
-  const skin = mat(p.skin, 0.7, 0.02);
+  g.name = `qin_${rank}`;
 
-  const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, height * 0.45, 12), robe);
-  torso.position.y = height * 0.35;
-  g.add(torso);
+  const clay = mat(p.clay, 0.88, 0.02);
+  const clayDark = mat(p.clayDark, 0.9, 0.02);
+  const armor = mat(p.armor, 0.7, 0.15);
+  const scale = mat(p.scale, 0.65, 0.2);
+  const bronze = mat(p.bronze, 0.35, 0.65, p.bronze, 0.08);
+  const boot = mat(p.boot, 0.85, 0.04);
+  const lacquer = mat(p.lacquer, 0.55, 0.15);
 
-  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.15, height * 0.22, 12), robe);
-  skirt.position.y = height * 0.14;
-  g.add(skirt);
+  const s = height / 0.78; // scale relative to default
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), skin);
-  head.position.y = height * 0.58;
+  // —— Boots ——
+  for (const side of [-1, 1]) {
+    addBox(g, 0.09 * s, 0.05 * s, 0.14 * s, boot, side * 0.07 * s, 0.04 * s, 0.02 * s);
+    addCyl(g, 0.045 * s, 0.05 * s, 0.12 * s, clayDark, side * 0.07 * s, 0.12 * s, 0, 0, 0, 0, 10);
+  }
+
+  // —— Legs ——
+  for (const side of [-1, 1]) {
+    addCyl(g, 0.05 * s, 0.055 * s, 0.22 * s, clay, side * 0.07 * s, 0.28 * s, 0, 0, 0, 0, 10);
+  }
+
+  // —— Armored skirt (甲裙) — overlapping panels ——
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const panel = addBox(g, 0.07 * s, 0.14 * s, 0.03 * s, armor, Math.sin(a) * 0.11 * s, 0.42 * s, Math.cos(a) * 0.11 * s);
+    panel.lookAt(0, 0.42 * s, 0);
+  }
+  addCyl(g, 0.1 * s, 0.12 * s, 0.08 * s, clayDark, 0, 0.4 * s, 0, 0, 0, 0, 12);
+
+  // —— Torso ——
+  addCyl(g, 0.1 * s, 0.12 * s, 0.22 * s, clay, 0, 0.55 * s, 0, 0, 0, 0, 14);
+
+  // Chest plate
+  addBox(g, 0.18 * s, 0.16 * s, 0.06 * s, armor, 0, 0.56 * s, 0.08 * s);
+
+  // Scale rows on chest
+  for (let row = 0; row < 3; row++) {
+    for (let col = -1; col <= 1; col++) {
+      addBox(
+        g,
+        0.045 * s,
+        0.035 * s,
+        0.02 * s,
+        scale,
+        col * 0.05 * s,
+        0.52 * s + row * 0.04 * s,
+        0.115 * s,
+      );
+    }
+  }
+
+  // Belt + buckle
+  addCyl(g, 0.115 * s, 0.115 * s, 0.035 * s, bronze, 0, 0.46 * s, 0, 0, 0, 0, 14);
+  addBox(g, 0.05 * s, 0.04 * s, 0.03 * s, bronze, 0, 0.46 * s, 0.12 * s);
+
+  // —— Shoulders / pauldrons ——
+  for (const side of [-1, 1]) {
+    addBox(g, 0.08 * s, 0.06 * s, 0.1 * s, armor, side * 0.14 * s, 0.64 * s, 0);
+    // Upper arm
+    const upper = addCyl(g, 0.04 * s, 0.045 * s, 0.16 * s, clay, side * 0.16 * s, 0.54 * s, 0, 0, 0, side * 0.15, 8);
+    upper.rotation.z = side * 0.2;
+    // Forearm
+    addCyl(g, 0.035 * s, 0.04 * s, 0.14 * s, clay, side * 0.2 * s, 0.4 * s, 0.02 * s, 0.3, 0, side * 0.1, 8);
+    // Fist
+    addCyl(g, 0.03 * s, 0.03 * s, 0.05 * s, clayDark, side * 0.21 * s, 0.32 * s, 0.04 * s, 0, 0, 0, 8);
+  }
+
+  // —— Neck + head ——
+  addCyl(g, 0.04 * s, 0.045 * s, 0.06 * s, clay, 0, 0.7 * s, 0, 0, 0, 0, 10);
+
+  // Head — slightly flattened oval (俑头), not a potato sphere
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.075 * s, 16, 14), clay);
+  head.scale.set(0.92, 1.05, 0.88);
+  head.position.set(0, 0.78 * s, 0.01 * s);
   g.add(head);
 
-  const sash = new THREE.Mesh(new THREE.TorusGeometry(0.1, 0.018, 6, 16), trim);
-  sash.rotation.x = Math.PI / 2;
-  sash.position.y = height * 0.32;
-  g.add(sash);
+  // Face planes — brow, nose, jaw suggestion
+  addBox(g, 0.08 * s, 0.015 * s, 0.02 * s, clayDark, 0, 0.81 * s, 0.065 * s); // brow
+  addBox(g, 0.025 * s, 0.04 * s, 0.035 * s, clayDark, 0, 0.77 * s, 0.07 * s); // nose
+  addBox(g, 0.05 * s, 0.02 * s, 0.02 * s, clayDark, 0, 0.735 * s, 0.06 * s); // mouth ridge
+  // Ears
+  for (const side of [-1, 1]) {
+    addCyl(g, 0.015 * s, 0.015 * s, 0.03 * s, clay, side * 0.07 * s, 0.78 * s, 0, 0, 0, Math.PI / 2, 8);
+  }
+
+  // —— Rank headgear ——
+  if (rank === "general") {
+    // Tall general crown with plume
+    addCyl(g, 0.08 * s, 0.09 * s, 0.08 * s, bronze, 0, 0.88 * s, 0, 0, 0, 0, 12);
+    addBox(g, 0.16 * s, 0.03 * s, 0.1 * s, bronze, 0, 0.9 * s, 0);
+    const plume = new THREE.Mesh(new THREE.ConeGeometry(0.035 * s, 0.18 * s, 8), lacquer);
+    plume.position.set(0, 1.02 * s, 0);
+    g.add(plume);
+    // Shoulder tassels
+    for (const side of [-1, 1]) {
+      addCyl(g, 0.02 * s, 0.01 * s, 0.1 * s, lacquer, side * 0.16 * s, 0.58 * s, 0.02 * s);
+    }
+  } else if (rank === "officer") {
+    // Flat officer hat with side wings (進贤冠-ish)
+    addBox(g, 0.22 * s, 0.04 * s, 0.12 * s, clayDark, 0, 0.88 * s, 0);
+    addBox(g, 0.1 * s, 0.06 * s, 0.1 * s, clayDark, 0, 0.92 * s, 0);
+    addBox(g, 0.04 * s, 0.03 * s, 0.08 * s, bronze, 0, 0.9 * s, 0.06 * s);
+  } else if (rank === "scholar") {
+    // Putou with long wings
+    addBox(g, 0.32 * s, 0.035 * s, 0.1 * s, clayDark, 0, 0.88 * s, 0);
+    addBox(g, 0.09 * s, 0.05 * s, 0.09 * s, clayDark, 0, 0.91 * s, 0);
+  } else if (rank === "cavalry") {
+    // Soft warrior topknot
+    addCyl(g, 0.04 * s, 0.05 * s, 0.07 * s, clayDark, 0, 0.9 * s, -0.01 * s, 0, 0, 0, 10);
+    addCyl(g, 0.025 * s, 0.03 * s, 0.05 * s, clayDark, 0, 0.96 * s, -0.01 * s);
+  } else {
+    // Infantry / gunner — simple topknot + forehead plate
+    addCyl(g, 0.035 * s, 0.045 * s, 0.06 * s, clayDark, 0, 0.89 * s, -0.01 * s);
+    addBox(g, 0.1 * s, 0.03 * s, 0.04 * s, armor, 0, 0.84 * s, 0.05 * s);
+  }
+
+  // —— Props ——
+  if (holdSpear) {
+    addCyl(g, 0.012 * s, 0.012 * s, 0.7 * s, mat(0x5a4030, 0.8, 0.05), 0.22 * s, 0.5 * s, 0.05 * s);
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.028 * s, 0.1 * s, 6), bronze);
+    tip.position.set(0.22 * s, 0.88 * s, 0.05 * s);
+    g.add(tip);
+  }
+  if (holdSword) {
+    addBox(g, 0.03 * s, 0.32 * s, 0.015 * s, bronze, 0.22 * s, 0.45 * s, 0.04 * s, 0, 0, -0.25);
+    addBox(g, 0.05 * s, 0.03 * s, 0.03 * s, bronze, 0.2 * s, 0.3 * s, 0.04 * s);
+  }
+  if (holdStaff) {
+    addCyl(g, 0.015 * s, 0.015 * s, 0.55 * s, bronze, 0.2 * s, 0.45 * s, 0.02 * s);
+    addCyl(g, 0.03 * s, 0.02 * s, 0.06 * s, lacquer, 0.2 * s, 0.75 * s, 0.02 * s);
+  }
+  if (holdTablet) {
+    addBox(g, 0.06 * s, 0.14 * s, 0.015 * s, bronze, 0.18 * s, 0.42 * s, 0.08 * s);
+  }
+  if (holdShield) {
+    const shield = addCyl(g, 0.09 * s, 0.09 * s, 0.025 * s, bronze, -0.2 * s, 0.4 * s, 0.06 * s, Math.PI / 2);
+    shield.rotation.y = 0.3;
+  }
 
   return g;
 }
 
-/** 帅 / 将 — crowned commander. */
+// --------------------------------------------------------------------------- ranks
+
 function buildGeneral(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
   const root = new THREE.Group();
   root.name = "xq_general";
-  root.add(lacquerDisc(faction, "k", 0.4));
-
-  const fig = hanFigure(faction, 0.7);
-  fig.position.y = 0.16;
-  root.add(fig);
-
-  const armor = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.13, 0.16, 12), mat(p.trim, 0.35, 0.6));
-  armor.position.y = 0.42;
-  root.add(armor);
-
-  // Mian / crown
-  const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.08, 10), mat(p.trim, 0.35, 0.65, p.trim, 0.15));
-  crown.position.y = 0.62;
-  root.add(crown);
-  const plume = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.16, 8), mat(faction === "w" ? 0xffe080 : 0xc9a45a, 0.4, 0.4));
-  plume.position.y = 0.74;
-  root.add(plume);
-
-  const blade = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.32, 0.02), mat(0xd0d4dc, 0.25, 0.9));
-  blade.position.set(0.16, 0.4, 0);
-  blade.rotation.z = -0.35;
-  root.add(blade);
-
+  root.add(lacquerDisc(faction, "k", 0.36));
+  const warrior = buildTerracottaWarrior({
+    faction,
+    rank: "general",
+    height: 0.85,
+    holdSword: true,
+  });
+  warrior.position.y = 0.1;
+  root.add(warrior);
   enableShadows(root);
   return root;
 }
 
-/** 仕 / 士 — scholar-official with putou hat. */
 function buildAdvisor(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
   const root = new THREE.Group();
   root.name = "xq_advisor";
-  root.add(lacquerDisc(faction, "a", 0.36));
-
-  const fig = hanFigure(faction, 0.58);
-  fig.position.y = 0.16;
-  root.add(fig);
-
-  // Wide putou wings
-  const hat = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.04, 0.12), mat(p.dark, 0.7, 0.05));
-  hat.position.y = 0.52;
-  root.add(hat);
-  const crown = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.06, 0.1), mat(p.dark, 0.7, 0.05));
-  crown.position.y = 0.56;
-  root.add(crown);
-
-  const tablet = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.14, 0.02), mat(p.trim, 0.45, 0.3));
-  tablet.position.set(0.12, 0.36, 0.06);
-  root.add(tablet);
-
+  root.add(lacquerDisc(faction, "a", 0.34));
+  const warrior = buildTerracottaWarrior({
+    faction,
+    rank: "scholar",
+    height: 0.78,
+    holdTablet: true,
+  });
+  warrior.position.y = 0.1;
+  root.add(warrior);
   enableShadows(root);
   return root;
 }
 
-/** 相 — court chancellor (red). */
 function buildChancellor(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
   const root = new THREE.Group();
   root.name = "xq_chancellor";
-  root.add(lacquerDisc(faction, "b", 0.37));
-
-  const fig = hanFigure(faction, 0.62);
-  fig.position.y = 0.16;
-  root.add(fig);
-
-  // Tall court hat
-  const hat = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.09, 0.2, 10), mat(p.dark, 0.65, 0.08));
-  hat.position.y = 0.6;
-  root.add(hat);
-  const jewel = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 8), mat(p.trim, 0.3, 0.7, p.trim, 0.25));
-  jewel.position.y = 0.72;
-  root.add(jewel);
-
-  const staff = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.45, 8), mat(p.trim, 0.4, 0.55));
-  staff.position.set(0.14, 0.38, 0);
-  root.add(staff);
-
+  root.add(lacquerDisc(faction, "b", 0.35));
+  const warrior = buildTerracottaWarrior({
+    faction,
+    rank: "officer",
+    height: 0.82,
+    holdStaff: true,
+  });
+  warrior.position.y = 0.1;
+  root.add(warrior);
   enableShadows(root);
   return root;
 }
 
-/** 象 — war elephant (black). */
 function buildElephant(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
+  const p = clayPalette(faction);
   const root = new THREE.Group();
   root.name = "xq_elephant";
-  root.add(lacquerDisc(faction, "b", 0.42));
+  root.add(lacquerDisc(faction, "b", 0.4));
 
-  const hide = mat(faction === "w" ? 0xb8a090 : 0x4a4540, 0.85, 0.04);
-  const ivory = mat(0xe8dcc0, 0.45, 0.15);
+  const hide = mat(faction === "w" ? 0xa89080 : 0x5a544c, 0.88, 0.03);
+  const ivory = mat(0xe0d4b8, 0.45, 0.12);
+  const armor = mat(p.armor, 0.7, 0.15);
 
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 18, 14), hide);
-  body.scale.set(1.15, 0.85, 1.4);
-  body.position.set(0, 0.42, 0);
+  const body = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 14), hide);
+  body.scale.set(1.2, 0.9, 1.45);
+  body.position.set(0, 0.4, 0);
   root.add(body);
 
-  const howdah = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.28), mat(p.cloth, 0.75, 0.05));
-  howdah.position.set(0, 0.58, -0.02);
-  root.add(howdah);
+  // Armored howdah
+  addBox(root, 0.26, 0.08, 0.3, armor, 0, 0.56, -0.02);
+  addBox(root, 0.28, 0.05, 0.32, mat(p.bronze, 0.4, 0.55), 0, 0.62, -0.02);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 12), hide);
-  head.position.set(0, 0.46, 0.36);
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 14, 12), hide);
+  head.position.set(0, 0.44, 0.34);
   root.add(head);
 
-  for (const side of [-1, 1]) {
-    const ear = new THREE.Mesh(new THREE.CircleGeometry(0.13, 12), hide);
-    ear.position.set(side * 0.17, 0.5, 0.32);
-    ear.rotation.y = side * Math.PI / 2;
-    ear.rotation.z = side * 0.3;
+  for (const side of [-1, 1] as const) {
+    const ear = new THREE.Mesh(new THREE.CircleGeometry(0.12, 12), hide);
+    ear.position.set(side * 0.15, 0.48, 0.3);
+    ear.rotation.y = (side * Math.PI) / 2;
+    ear.rotation.z = side * 0.25;
     root.add(ear);
-    const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.025, 0.18, 8), ivory);
-    tusk.position.set(side * 0.07, 0.34, 0.46);
-    tusk.rotation.x = 1.1;
-    tusk.rotation.z = side * -0.2;
+    const tusk = new THREE.Mesh(new THREE.ConeGeometry(0.022, 0.16, 8), ivory);
+    tusk.position.set(side * 0.06, 0.32, 0.44);
+    tusk.rotation.x = 1.05;
+    tusk.rotation.z = side * -0.18;
     root.add(tusk);
   }
 
-  const trunk = new THREE.Mesh(new THREE.CapsuleGeometry(0.045, 0.28, 4, 8), hide);
-  trunk.position.set(0, 0.3, 0.5);
-  trunk.rotation.x = 0.9;
+  const trunk = new THREE.Mesh(new THREE.CapsuleGeometry(0.04, 0.26, 4, 8), hide);
+  trunk.position.set(0, 0.28, 0.48);
+  trunk.rotation.x = 0.85;
   root.add(trunk);
 
-  const legGeo = new THREE.CylinderGeometry(0.055, 0.065, 0.26, 10);
+  const legGeo = new THREE.CylinderGeometry(0.05, 0.06, 0.24, 10);
   for (const [x, z] of [
-    [-0.13, 0.14],
-    [0.13, 0.14],
-    [-0.13, -0.18],
-    [0.13, -0.18],
-  ] as const) {
-    const leg = new THREE.Mesh(legGeo, hide);
-    leg.position.set(x, 0.28, z);
-    root.add(leg);
-  }
-
-  enableShadows(root);
-  return root;
-}
-
-/** 马 / 傌 — war horse with rider. */
-function buildHorse(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
-  const root = new THREE.Group();
-  root.name = "xq_horse";
-  root.add(lacquerDisc(faction, "n", 0.38));
-
-  const hide = mat(faction === "w" ? 0x8a7060 : 0x3a3028, 0.8, 0.04);
-  const mane = mat(p.dark, 0.75, 0.02);
-
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.28, 6, 10), hide);
-  body.rotation.z = Math.PI / 2;
-  body.position.set(0, 0.38, 0);
-  root.add(body);
-
-  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.14, 4, 8), hide);
-  neck.position.set(0, 0.48, 0.18);
-  neck.rotation.x = -0.6;
-  root.add(neck);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 10), hide);
-  head.scale.set(0.85, 0.75, 1.25);
-  head.position.set(0, 0.54, 0.3);
-  root.add(head);
-
-  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.05, 0.1, 8), hide);
-  snout.rotation.x = Math.PI / 2;
-  snout.position.set(0, 0.5, 0.4);
-  root.add(snout);
-
-  const maneMesh = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.12), mane);
-  maneMesh.position.set(0, 0.56, 0.12);
-  maneMesh.rotation.x = -0.4;
-  root.add(maneMesh);
-
-  const legGeo = new THREE.CylinderGeometry(0.03, 0.035, 0.22, 8);
-  for (const [x, z] of [
-    [-0.08, 0.1],
-    [0.08, 0.1],
-    [-0.08, -0.12],
-    [0.08, -0.12],
+    [-0.12, 0.14],
+    [0.12, 0.14],
+    [-0.12, -0.16],
+    [0.12, -0.16],
   ] as const) {
     const leg = new THREE.Mesh(legGeo, hide);
     leg.position.set(x, 0.26, z);
     root.add(leg);
   }
 
-  const rider = hanFigure(faction, 0.4);
-  rider.position.set(0, 0.42, -0.02);
-  rider.scale.setScalar(0.75);
+  // Mahout (terracotta rider)
+  const rider = buildTerracottaWarrior({ faction, rank: "cavalry", height: 0.42 });
+  rider.position.set(0, 0.58, -0.02);
+  rider.scale.setScalar(0.55);
   root.add(rider);
 
   enableShadows(root);
   return root;
 }
 
-/** 车 / 俥 — chariot with driver. */
+function buildHorse(faction: Faction): THREE.Object3D {
+  const p = clayPalette(faction);
+  const root = new THREE.Group();
+  root.name = "xq_horse";
+  root.add(lacquerDisc(faction, "n", 0.36));
+
+  const hide = mat(faction === "w" ? 0x9a8070 : 0x4a443c, 0.85, 0.03);
+  const mane = mat(p.clayDark, 0.8, 0.02);
+  const bronze = mat(p.bronze, 0.35, 0.6);
+
+  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.26, 6, 12), hide);
+  body.rotation.z = Math.PI / 2;
+  body.position.set(0, 0.36, 0);
+  root.add(body);
+
+  const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.055, 0.14, 4, 8), hide);
+  neck.position.set(0, 0.46, 0.16);
+  neck.rotation.x = -0.55;
+  root.add(neck);
+
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), hide);
+  head.scale.set(0.8, 0.7, 1.3);
+  head.position.set(0, 0.52, 0.28);
+  root.add(head);
+
+  const snout = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.045, 0.09, 8), hide);
+  snout.rotation.x = Math.PI / 2;
+  snout.position.set(0, 0.48, 0.38);
+  root.add(snout);
+
+  addBox(root, 0.035, 0.14, 0.1, mane, 0, 0.54, 0.1, -0.35);
+
+  // Bridle / tack
+  addCyl(root, 0.08, 0.08, 0.02, bronze, 0, 0.38, 0, Math.PI / 2);
+
+  const legGeo = new THREE.CylinderGeometry(0.028, 0.032, 0.2, 8);
+  for (const [x, z] of [
+    [-0.07, 0.1],
+    [0.07, 0.1],
+    [-0.07, -0.11],
+    [0.07, -0.11],
+  ] as const) {
+    const leg = new THREE.Mesh(legGeo, hide);
+    leg.position.set(x, 0.24, z);
+    root.add(leg);
+  }
+
+  const rider = buildTerracottaWarrior({
+    faction,
+    rank: "cavalry",
+    height: 0.5,
+    holdSpear: true,
+  });
+  rider.position.set(0, 0.4, -0.02);
+  rider.scale.setScalar(0.7);
+  root.add(rider);
+
+  enableShadows(root);
+  return root;
+}
+
 function buildChariot(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
+  const p = clayPalette(faction);
   const root = new THREE.Group();
   root.name = "xq_chariot";
-  root.add(lacquerDisc(faction, "r", 0.4));
+  root.add(lacquerDisc(faction, "r", 0.38));
 
   const wood = mat(faction === "w" ? 0x8a6238 : 0x3a2a1c, 0.82, 0.05);
-  const bronze = mat(p.trim, 0.35, 0.7);
+  const bronze = mat(p.bronze, 0.35, 0.7);
   const lacquer = mat(p.lacquer, 0.55, 0.2);
 
-  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.06, 0.5), wood);
-  deck.position.set(0, 0.28, 0);
-  root.add(deck);
-
-  for (const x of [-0.18, 0.18]) {
-    const wall = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.2, 0.46), lacquer);
-    wall.position.set(x, 0.4, 0);
-    root.add(wall);
+  addBox(root, 0.38, 0.06, 0.48, wood, 0, 0.26, 0);
+  for (const x of [-0.17, 0.17]) {
+    addBox(root, 0.035, 0.2, 0.44, lacquer, x, 0.38, 0);
   }
-  const front = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.16, 0.04), lacquer);
-  front.position.set(0, 0.38, 0.24);
-  root.add(front);
+  addBox(root, 0.38, 0.16, 0.035, lacquer, 0, 0.36, 0.22);
 
-  const axle = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.55, 8), bronze);
-  axle.rotation.z = Math.PI / 2;
-  axle.position.set(0, 0.22, -0.02);
-  root.add(axle);
+  const axle = addCyl(root, 0.022, 0.022, 0.52, bronze, 0, 0.2, -0.02, 0, 0, Math.PI / 2);
+  void axle;
 
-  for (const side of [-1, 1]) {
-    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.14, 0.03, 8, 18), wood);
+  for (const side of [-1, 1] as const) {
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.028, 8, 18), wood);
     wheel.rotation.y = Math.PI / 2;
-    wheel.position.set(side * 0.26, 0.22, -0.02);
+    wheel.position.set(side * 0.25, 0.2, -0.02);
     root.add(wheel);
     for (let i = 0; i < 6; i++) {
-      const spoke = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.24, 0.015), bronze);
-      spoke.position.copy(wheel.position);
-      spoke.rotation.z = (i / 6) * Math.PI;
-      spoke.rotation.y = Math.PI / 2;
-      root.add(spoke);
+      const spoke = addBox(root, 0.014, 0.22, 0.014, bronze, side * 0.25, 0.2, -0.02, 0, Math.PI / 2, (i / 6) * Math.PI);
+      void spoke;
     }
   }
 
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.55, 8), wood);
-  pole.rotation.x = Math.PI / 2;
-  pole.position.set(0, 0.26, 0.48);
-  root.add(pole);
+  const pole = addCyl(root, 0.018, 0.018, 0.5, wood, 0, 0.24, 0.45, Math.PI / 2);
+  void pole;
 
-  const banner = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.45, 6), wood);
-  banner.position.set(-0.12, 0.55, -0.15);
-  root.add(banner);
-  const pennant = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.1), lacquer);
-  pennant.position.set(-0.04, 0.7, -0.15);
+  addCyl(root, 0.01, 0.01, 0.42, wood, -0.12, 0.52, -0.14);
+  const pennant = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 0.09), lacquer);
+  pennant.position.set(-0.04, 0.66, -0.14);
   pennant.rotation.y = 0.35;
   root.add(pennant);
 
-  const driver = hanFigure(faction, 0.48);
-  driver.position.set(0, 0.32, -0.02);
-  driver.scale.setScalar(0.85);
+  const driver = buildTerracottaWarrior({
+    faction,
+    rank: "officer",
+    height: 0.55,
+    holdSpear: true,
+  });
+  driver.position.set(0, 0.3, -0.02);
+  driver.scale.setScalar(0.75);
   root.add(driver);
 
   enableShadows(root);
   return root;
 }
 
-/** 炮 / 砲 — wheeled cannon. */
 function buildCannon(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
+  const p = clayPalette(faction);
   const root = new THREE.Group();
   root.name = "xq_cannon";
-  root.add(lacquerDisc(faction, "c", 0.38));
+  root.add(lacquerDisc(faction, "c", 0.36));
 
   const iron = mat(0x3a3e44, 0.4, 0.85);
-  const bronze = mat(p.trim, 0.35, 0.7);
+  const bronze = mat(p.bronze, 0.35, 0.7);
   const wood = mat(faction === "w" ? 0x8a6238 : 0x3a2a1c, 0.8, 0.05);
 
-  const carriage = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.1, 0.36), wood);
-  carriage.position.set(0, 0.28, 0);
-  root.add(carriage);
+  addBox(root, 0.26, 0.09, 0.34, wood, 0, 0.26, 0);
 
-  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.09, 0.48, 14), iron);
-  barrel.rotation.x = Math.PI / 2 + 0.12;
-  barrel.position.set(0, 0.4, 0.06);
-  root.add(barrel);
+  const barrel = addCyl(root, 0.065, 0.085, 0.46, iron, 0, 0.38, 0.05, Math.PI / 2 + 0.1);
+  void barrel;
 
-  const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.02, 8, 16), bronze);
+  const muzzle = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.018, 8, 16), bronze);
   muzzle.rotation.y = Math.PI / 2;
-  muzzle.position.set(0, 0.43, 0.3);
+  muzzle.position.set(0, 0.41, 0.28);
   root.add(muzzle);
 
-  const breech = new THREE.Mesh(new THREE.SphereGeometry(0.09, 12, 10), iron);
-  breech.position.set(0, 0.38, -0.18);
-  root.add(breech);
+  addCyl(root, 0.08, 0.08, 0.1, iron, 0, 0.36, -0.16);
 
-  for (const side of [-1, 1]) {
-    const wheel = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.05, 16), wood);
-    wheel.rotation.z = Math.PI / 2;
-    wheel.position.set(side * 0.18, 0.2, 0);
-    root.add(wheel);
+  for (const side of [-1, 1] as const) {
+    const wheel = addCyl(root, 0.11, 0.11, 0.045, wood, side * 0.17, 0.18, 0, 0, 0, Math.PI / 2, 14);
+    void wheel;
   }
 
-  // Gunner
-  const gunner = hanFigure(faction, 0.42);
-  gunner.position.set(0.02, 0.3, -0.2);
-  gunner.scale.setScalar(0.7);
+  const gunner = buildTerracottaWarrior({
+    faction,
+    rank: "gunner",
+    height: 0.48,
+  });
+  gunner.position.set(0.02, 0.28, -0.18);
+  gunner.scale.setScalar(0.65);
   root.add(gunner);
 
   enableShadows(root);
   return root;
 }
 
-/** 兵 / 卒 — foot soldier with spear and shield. */
 function buildSoldier(faction: Faction): THREE.Object3D {
-  const p = factionPalette(faction);
   const root = new THREE.Group();
   root.name = "xq_soldier";
-  root.add(lacquerDisc(faction, "p", 0.34));
-
-  const fig = hanFigure(faction, 0.5);
-  fig.position.y = 0.16;
-  root.add(fig);
-
-  // Cap
-  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.075, 0.06, 10), mat(p.dark, 0.7, 0.05));
-  cap.position.y = 0.48;
-  root.add(cap);
-
-  const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.55, 6), mat(0x6a4a28, 0.8, 0.05));
-  spear.position.set(0.14, 0.4, 0);
-  root.add(spear);
-  const tip = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.1, 6), mat(0xc0c4cc, 0.3, 0.85));
-  tip.position.set(0.14, 0.7, 0);
-  root.add(tip);
-
-  const shield = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.03, 12), mat(p.trim, 0.45, 0.4));
-  shield.rotation.x = Math.PI / 2;
-  shield.position.set(-0.12, 0.34, 0.06);
-  root.add(shield);
-
+  root.add(lacquerDisc(faction, "p", 0.32));
+  const warrior = buildTerracottaWarrior({
+    faction,
+    rank: "infantry",
+    height: 0.75,
+    holdSpear: true,
+    holdShield: true,
+  });
+  warrior.position.y = 0.1;
+  root.add(warrior);
   enableShadows(root);
   return root;
 }
 
-/**
- * Build the full visual for one Xiangqi rank — replaces western GLB sculpts.
- */
+/** Build the full visual for one Xiangqi rank. */
 export function buildXiangqiPiece(kind: PieceKind, faction: Faction): THREE.Object3D {
   switch (kind) {
     case "k":
@@ -493,17 +617,14 @@ export function buildXiangqiPiece(kind: PieceKind, faction: Faction): THREE.Obje
   }
 }
 
-/** @deprecated use buildXiangqiPiece — kept for any leftover imports */
 export function buildXiangqiElephant(faction: Faction): THREE.Object3D {
   return buildElephant(faction);
 }
 
-/** @deprecated */
 export function buildXiangqiChariot(faction: Faction): THREE.Object3D {
   return buildChariot(faction);
 }
 
-/** @deprecated */
 export function buildHanSash(_faction: Faction): THREE.Object3D {
   return new THREE.Group();
 }

@@ -59,9 +59,9 @@ export const XIANGQI_ROLE_ZH: Record<Faction, Record<"k" | "a" | "b" | "n" | "r"
 };
 
 /**
- * Which rigged chess sculpt stands in for a Xiangqi rank.
- * 相 (red chancellor) → court mage; 象 (black elephant) → procedural elephant
- * (see xiangqiFigures); 炮 → ranged caster; 車 → chariot + rider.
+ * Fallback western sculpt key when a template is needed.
+ * Live Xiangqi visuals are procedural Qin terracotta warriors
+ * (see xiangqiFigures) — this mapping is only a factory fallback.
  */
 export function xiangqiSculpt(kind: PieceKind, color: Faction): ChessSculpt {
   switch (kind) {
