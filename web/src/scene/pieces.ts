@@ -14,6 +14,13 @@ import { BADGE_LIFT, BADGE_SCALE, TOKEN_SCALE, rankBadgeTexture, tacticalTokenTe
 import { radialTexture } from "./textures";
 import { Ease, type TweenManager } from "./tween";
 import { attachWeapons, type AttachedArms } from "./weapons";
+import {
+  CHARIOT_RIDER_LIFT,
+  CHARIOT_RIDER_SCALE,
+  buildHanSash,
+  buildXiangqiChariot,
+  buildXiangqiElephant,
+} from "./xiangqiFigures";
 import { xiangqiDiscTexture } from "./xiangqiTextures";
 
 /** Rendered height (world units, 1 unit = 1 board square) per piece kind. */
@@ -392,13 +399,13 @@ export class PieceView {
 
     const accent = FACTION_ACCENT[color];
     const xiangqi = Boolean(options.xiangqiStyle);
-    const footprint = xiangqi ? 0.52 : 1;
+    const footprint = xiangqi ? 0.38 : 1;
 
     const glowMaterial = new THREE.MeshBasicMaterial({
       map: sharedGlowTexture(),
       color: xiangqi ? (color === "w" ? 0xc62828 : 0xc9a45a) : accent,
       transparent: true,
-      opacity: xiangqi ? 0.22 : 0.16,
+      opacity: xiangqi ? 0.14 : 0.16,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
@@ -414,35 +421,105 @@ export class PieceView {
         map: sharedShadowTexture(),
         color: 0x000000,
         transparent: true,
-        opacity: xiangqi ? 0.4 : 0.55,
+        opacity: xiangqi ? 0.32 : 0.55,
         depthWrite: false,
       });
       this.shadow = new THREE.Mesh(sharedDiscGeometry(), shadowMaterial);
       this.shadow.rotation.x = -Math.PI / 2;
       this.shadow.position.y = 0.006;
-      this.shadow.scale.setScalar(0.85 * footprint);
+      this.shadow.scale.setScalar(0.7 * footprint);
       this.shadow.renderOrder = 1;
       this.container.add(this.shadow);
     }
 
     if (xiangqi) {
-      // Traditional lacquer disc under the figure — anchors it to the point.
+      // Quiet lacquer foot — thin disc, soft seal; crest carries the rank.
       const discMap = xiangqiDiscTexture(kind, color);
       const discMat = new THREE.MeshStandardMaterial({
         map: discMap,
-        roughness: 0.5,
-        metalness: 0.1,
+        roughness: 0.55,
+        metalness: 0.08,
       });
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.44, 0.12, 36), discMat);
-      disc.position.y = 0.06;
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.26, 0.28, 0.05, 28), discMat);
+      disc.position.y = 0.028;
       disc.castShadow = true;
       disc.receiveShadow = true;
       disc.userData.piece = this;
       this.container.add(disc);
-      // Lift the figure onto the disc so feet sit on the lacquer face.
-      this.visual.position.y = 0.12;
-      this.visual.scale.setScalar(0.72);
       this.materials.push(discMat);
+
+      if (kind === "b" && color === "b") {
+        // 象 — procedural elephant replaces the western sculpt.
+        this.visual.clear();
+        const elephant = buildXiangqiElephant(color);
+        elephant.scale.setScalar(1);
+        this.visual.add(elephant);
+        this.visual.position.y = 0.05;
+        this.visual.scale.setScalar(1);
+        elephant.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (mesh.isMesh) {
+            this.meshes.push(mesh);
+            mesh.userData.piece = this;
+            const material = mesh.material as THREE.MeshStandardMaterial;
+            if (material?.isMeshStandardMaterial) {
+              installDissolve(material, this.dissolveUniforms, 0);
+              this.materials.push(material);
+            }
+          }
+        });
+      } else if (kind === "r") {
+        // 車 — chariot body under a scaled rider.
+        const chariot = buildXiangqiChariot(color);
+        chariot.userData.piece = this;
+        this.container.add(chariot);
+        chariot.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (mesh.isMesh) {
+            this.meshes.push(mesh);
+            mesh.userData.piece = this;
+            const material = mesh.material as THREE.MeshStandardMaterial;
+            if (material?.isMeshStandardMaterial) {
+              installDissolve(material, this.dissolveUniforms, 0);
+              this.materials.push(material);
+            }
+          }
+        });
+        this.visual.position.y = CHARIOT_RIDER_LIFT;
+        this.visual.scale.setScalar(CHARIOT_RIDER_SCALE);
+        const sash = buildHanSash(color);
+        this.visual.add(sash);
+        sash.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (mesh.isMesh) {
+            this.meshes.push(mesh);
+            mesh.userData.piece = this;
+            const material = mesh.material as THREE.MeshStandardMaterial;
+            if (material?.isMeshStandardMaterial) {
+              installDissolve(material, this.dissolveUniforms, 0);
+              this.materials.push(material);
+            }
+          }
+        });
+      } else {
+        this.visual.position.y = 0.055;
+        this.visual.scale.setScalar(0.82);
+        const sash = buildHanSash(color);
+        sash.position.y = 0;
+        this.visual.add(sash);
+        sash.traverse((node) => {
+          const mesh = node as THREE.Mesh;
+          if (mesh.isMesh) {
+            this.meshes.push(mesh);
+            mesh.userData.piece = this;
+            const material = mesh.material as THREE.MeshStandardMaterial;
+            if (material?.isMeshStandardMaterial) {
+              installDissolve(material, this.dissolveUniforms, 0);
+              this.materials.push(material);
+            }
+          }
+        });
+      }
     }
 
     this.badgeWanted = options.rankBadge !== false;
@@ -450,7 +527,10 @@ export class PieceView {
     this.buildBadge();
 
     this.setupAnimations(model, clips, options.idleAnimation !== false);
-    this.equipArms(model, unit, baseY);
+    // Elephant has no hands; chariot rider + others get Han-leaning arms.
+    if (!(xiangqi && kind === "b" && color === "b")) {
+      this.equipArms(model, unit, baseY, xiangqi);
+    }
   }
 
   /** True when this figure was built for the Xiangqi board. */
@@ -553,7 +633,7 @@ export class PieceView {
   }
 
   private badgeScaleMul(): number {
-    return this.xiangqiStyle ? 1.15 : 1;
+    return this.xiangqiStyle ? 0.92 : 1;
   }
 
   private tokenScaleMul(): number {
@@ -606,10 +686,10 @@ export class PieceView {
    * Hands the figure its weapon once the stance pose is settled, so the prop is
    * aligned against the pose the player actually sees.
    */
-  private equipArms(model: THREE.Object3D, unit: number, baseY: number): void {
+  private equipArms(model: THREE.Object3D, unit: number, baseY: number, hanStyle = false): void {
     try {
       this.mixer?.update(0);
-      const arms = attachWeapons(model, this.kind, this.color, unit, baseY);
+      const arms = attachWeapons(model, this.kind, this.color, unit, baseY, hanStyle);
       this.arms = arms;
       for (const mesh of arms.meshes) mesh.userData.piece = this;
       // Props hang off bones, so they burn on the same clock but without the

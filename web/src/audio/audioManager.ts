@@ -178,8 +178,8 @@ interface Bed {
 }
 
 const BED_VOLUME: Record<BedName, number> = {
-  ambience: 0.32,
-  score: 0.34,
+  ambience: 0.4,
+  score: 0.48,
   tension: 0.0,
 };
 
@@ -271,6 +271,39 @@ export class AudioManager {
       }
       this.beds.set(layer.name, { gain, source, target: BED_VOLUME[layer.name] });
     }
+    this.startGuqinPad();
+  }
+
+  /**
+   * Soft pentatonic drone under the score — reads as court music when the
+   * downloaded stems are western / sparse (esp. on first mobile unlock).
+   */
+  private startGuqinPad(): void {
+    if (!this.ctx || !this.bedBus) return;
+    const ctx = this.ctx;
+    const master = ctx.createGain();
+    master.gain.value = 0.12;
+    master.connect(this.bedBus);
+
+    // 宫商角徵羽-ish stack around A3.
+    const freqs = [220, 247, 293, 330, 392];
+    for (let i = 0; i < freqs.length; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = i % 2 === 0 ? "sine" : "triangle";
+      osc.frequency.value = freqs[i];
+      const g = ctx.createGain();
+      g.gain.value = 0.08 / (i + 1);
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.05 + i * 0.01;
+      const lfoGain = ctx.createGain();
+      lfoGain.gain.value = 4;
+      lfo.connect(lfoGain);
+      lfoGain.connect(osc.frequency);
+      osc.connect(g);
+      g.connect(master);
+      osc.start();
+      lfo.start();
+    }
   }
 
   /** 0 = calm, 1 = check / endgame. Crossfades the tension stem. */
@@ -278,7 +311,7 @@ export class AudioManager {
     if (!this.ctx) return;
     const clamped = Math.max(0, Math.min(1, intensity));
     this.fadeBed("tension", clamped * 0.5, 1.8);
-    this.fadeBed("score", 0.34 - clamped * 0.12, 1.8);
+    this.fadeBed("score", BED_VOLUME.score - clamped * 0.14, 1.8);
   }
 
   private fadeBed(name: BedName, value: number, seconds: number): void {

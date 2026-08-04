@@ -12,7 +12,7 @@ import {
   selectMarkerTexture,
   shockwaveTexture,
 } from "./textures";
-import { xiangqiRiverTexture, xiangqiWoodTexture } from "./xiangqiTextures";
+import { xiangqiRiverTexture, xiangqiShanshuiOverlay, xiangqiWoodTexture } from "./xiangqiTextures";
 import type { HighlightKind } from "./board";
 
 const HIGHLIGHT_COLORS: Record<HighlightKind, number> = {
@@ -171,6 +171,25 @@ export class XiangqiBoardView {
     slab.receiveShadow = true;
     slab.castShadow = true;
     this.group.add(slab);
+
+    // Ink-wash 山水 overlay floating just above the lacquer face.
+    const shanshui = this.track(
+      new THREE.MeshBasicMaterial({
+        map: this.track(xiangqiShanshuiOverlay()),
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+      }),
+    );
+    const landscape = new THREE.Mesh(
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE + 0.2, (geom.rankCount - 1) * TILE + 0.2),
+      shanshui,
+    );
+    landscape.rotation.x = -Math.PI / 2;
+    landscape.position.y = BOARD_TOP + 0.004;
+    this.group.add(landscape);
+
+    this.addShoreMountains(width, depth);
 
     // Vermilion lacquer rim / frame.
     const rim = this.track(
@@ -425,6 +444,68 @@ export class XiangqiBoardView {
 
     this.initWaves();
     this.initLandings();
+  }
+
+  /** Low carved peaks along the far shores — reads as 山水 without blocking play. */
+  private addShoreMountains(width: number, _depth: number): void {
+    const geom = getBoardGeometry();
+    const rock = this.track(
+      new THREE.MeshStandardMaterial({
+        color: 0x5a6a58,
+        roughness: 0.92,
+        metalness: 0.02,
+        flatShading: true,
+      }),
+    );
+    const mistRock = this.track(
+      new THREE.MeshStandardMaterial({
+        color: 0x6a7a88,
+        roughness: 0.88,
+        metalness: 0.04,
+        flatShading: true,
+      }),
+    );
+    const pine = this.track(
+      new THREE.MeshStandardMaterial({ color: 0x2a4030, roughness: 0.9, metalness: 0 }),
+    );
+
+    const placePeak = (x: number, z: number, h: number, r: number, material: THREE.Material) => {
+      const peak = new THREE.Mesh(new THREE.ConeGeometry(r, h, 5), material);
+      peak.position.set(x, BOARD_TOP + h * 0.5 + 0.02, z);
+      peak.castShadow = true;
+      peak.receiveShadow = true;
+      this.group.add(peak);
+    };
+
+    // North / south lacquer margins — outside the back ranks, inside the rim.
+    const zN = -(geom.halfRanks * TILE + TILE * 0.42);
+    const zS = geom.halfRanks * TILE + TILE * 0.42;
+    for (let i = -3; i <= 3; i++) {
+      const x = i * TILE * 1.05;
+      placePeak(x + 0.08, zN, 0.22 + (Math.abs(i) % 3) * 0.06, 0.14 + (Math.abs(i) % 2) * 0.04, mistRock);
+      placePeak(x - 0.04, zS, 0.2 + ((i + 1) % 3) * 0.05, 0.13, rock);
+    }
+    // Corner massifs on the rim
+    for (const [x, z, mat] of [
+      [-width * 0.36, zN, mistRock],
+      [width * 0.36, zN, mistRock],
+      [-width * 0.36, zS, rock],
+      [width * 0.36, zS, rock],
+    ] as const) {
+      placePeak(x, z, 0.34, 0.22, mat);
+      placePeak(x + 0.14, z + (z < 0 ? -0.05 : 0.05), 0.22, 0.14, mat);
+    }
+
+    // Tiny pines on the ridges
+    for (let i = 0; i < 8; i++) {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.1, 5), rock);
+      const crown = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.14, 6), pine);
+      const x = (i - 3.5) * TILE * 0.95;
+      const z = i % 2 === 0 ? zN : zS;
+      trunk.position.set(x, BOARD_TOP + 0.1, z);
+      crown.position.set(x, BOARD_TOP + 0.2, z);
+      this.group.add(trunk, crown);
+    }
   }
 
   private addRiverLabel(text: string, x: number, color: string): void {
