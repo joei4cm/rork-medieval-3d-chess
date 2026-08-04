@@ -631,6 +631,30 @@ const LOADOUT: Record<Faction, Record<PieceKind, Loadout>> = {
   },
 };
 
+/** Han-leaning arms for Xiangqi — spears and staves instead of Aztec / gothic kit. */
+const XIANGQI_LOADOUT: Record<Faction, Record<PieceKind, Loadout>> = {
+  w: {
+    k: { main: "greatsword" },
+    q: { main: "scepter" },
+    b: { main: "crystalStaff" },
+    n: { main: "spear", off: "roundShield" },
+    r: { main: "spear" },
+    p: { main: "spear", off: "roundShield" },
+    a: { main: "scepter" },
+    c: { main: "crystalStaff" },
+  },
+  b: {
+    k: { main: "greatsword" },
+    q: { main: "scepter" },
+    b: { main: "serpentStaff" },
+    n: { main: "spear", off: "roundShield" },
+    r: { main: "spear" },
+    p: { main: "spear", off: "roundShield" },
+    a: { main: "scepter" },
+    c: { main: "crystalStaff" },
+  },
+};
+
 // ------------------------------------------------------------------ materials
 
 const PALETTE: Record<Faction, Record<WeaponRole, { color: number; roughness: number; metalness: number; emissive: number; emissiveIntensity: number }>> = {
@@ -780,9 +804,10 @@ export function attachWeapons(
   color: Faction,
   unit: number,
   baseY = 0,
+  hanStyle = false,
 ): AttachedArms {
   const arms: AttachedArms = { meshes: [], materials: [], baseEmissive: [], focus: null };
-  const loadout = LOADOUT[color][kind];
+  const loadout = (hanStyle ? XIANGQI_LOADOUT : LOADOUT)[color][kind];
 
   root.updateMatrixWorld(true);
   const rootInverse = root.matrixWorld.clone().invert();
