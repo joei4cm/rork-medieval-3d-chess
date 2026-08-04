@@ -117,24 +117,28 @@ function lacquerDisc(faction: Faction, kind: PieceKind, radius = 0.34): THREE.Gr
   group.add(rim);
 
   const glyph = xiangqiGlyph(kind, faction);
-  const size = 256;
-  const canvas = document.createElement("canvas");
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext("2d")!;
-  ctx.clearRect(0, 0, size, size);
-  ctx.fillStyle = faction === "w" ? "#7a1212" : "#e8d5a0";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.font = `bold ${Math.round(size * 0.55)}px "Noto Serif SC","Songti SC","SimSun",serif`;
-  ctx.fillText(glyph, size / 2, size / 2 + 4);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  const glyphMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
-  const glyphPlane = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.62, 28), glyphMat);
-  glyphPlane.rotation.x = -Math.PI / 2;
-  glyphPlane.position.y = 0.112;
-  group.add(glyphPlane);
+  if (typeof document !== "undefined") {
+    const size = 256;
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.clearRect(0, 0, size, size);
+      ctx.fillStyle = faction === "w" ? "#7a1212" : "#e8d5a0";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = `bold ${Math.round(size * 0.55)}px "Noto Serif SC","Songti SC","SimSun",serif`;
+      ctx.fillText(glyph, size / 2, size / 2 + 4);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      const glyphMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false });
+      const glyphPlane = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.62, 28), glyphMat);
+      glyphPlane.rotation.x = -Math.PI / 2;
+      glyphPlane.position.y = 0.112;
+      group.add(glyphPlane);
+    }
+  }
 
   return group;
 }
@@ -194,8 +198,19 @@ function buildTerracottaWarrior(opts: WarriorOpts): THREE.Group {
   // —— Armored skirt (甲裙) — overlapping panels ——
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
-    const panel = addBox(g, 0.07 * s, 0.14 * s, 0.03 * s, armor, Math.sin(a) * 0.11 * s, 0.42 * s, Math.cos(a) * 0.11 * s);
-    panel.lookAt(0, 0.42 * s, 0);
+    addBox(
+      g,
+      0.07 * s,
+      0.14 * s,
+      0.03 * s,
+      armor,
+      Math.sin(a) * 0.11 * s,
+      0.42 * s,
+      Math.cos(a) * 0.11 * s,
+      0,
+      a,
+      0,
+    );
   }
   addCyl(g, 0.1 * s, 0.12 * s, 0.08 * s, clayDark, 0, 0.4 * s, 0, 0, 0, 0, 12);
 
@@ -240,19 +255,22 @@ function buildTerracottaWarrior(opts: WarriorOpts): THREE.Group {
   // —— Neck + head ——
   addCyl(g, 0.04 * s, 0.045 * s, 0.06 * s, clay, 0, 0.7 * s, 0, 0, 0, 0, 10);
 
-  // Head — slightly flattened oval (俑头), not a potato sphere
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.075 * s, 16, 14), clay);
-  head.scale.set(0.92, 1.05, 0.88);
-  head.position.set(0, 0.78 * s, 0.01 * s);
-  g.add(head);
+  // Head — blocky terracotta 俑头 (angular, not a potato sphere)
+  addBox(g, 0.12 * s, 0.14 * s, 0.11 * s, clay, 0, 0.78 * s, 0.01 * s);
+  // Soften crown with a shallow cap
+  addCyl(g, 0.055 * s, 0.06 * s, 0.04 * s, clay, 0, 0.86 * s, 0.01 * s, 0, 0, 0, 12);
 
-  // Face planes — brow, nose, jaw suggestion
-  addBox(g, 0.08 * s, 0.015 * s, 0.02 * s, clayDark, 0, 0.81 * s, 0.065 * s); // brow
-  addBox(g, 0.025 * s, 0.04 * s, 0.035 * s, clayDark, 0, 0.77 * s, 0.07 * s); // nose
-  addBox(g, 0.05 * s, 0.02 * s, 0.02 * s, clayDark, 0, 0.735 * s, 0.06 * s); // mouth ridge
+  // Face planes — brow, nose, jaw, eyes
+  addBox(g, 0.09 * s, 0.015 * s, 0.02 * s, clayDark, 0, 0.82 * s, 0.07 * s); // brow
+  for (const side of [-1, 1]) {
+    addBox(g, 0.025 * s, 0.012 * s, 0.01 * s, clayDark, side * 0.03 * s, 0.79 * s, 0.07 * s); // eyes
+  }
+  addBox(g, 0.025 * s, 0.04 * s, 0.035 * s, clayDark, 0, 0.77 * s, 0.075 * s); // nose
+  addBox(g, 0.05 * s, 0.015 * s, 0.02 * s, clayDark, 0, 0.73 * s, 0.07 * s); // mouth ridge
+  addBox(g, 0.1 * s, 0.03 * s, 0.04 * s, clayDark, 0, 0.7 * s, 0.04 * s); // jaw
   // Ears
   for (const side of [-1, 1]) {
-    addCyl(g, 0.015 * s, 0.015 * s, 0.03 * s, clay, side * 0.07 * s, 0.78 * s, 0, 0, 0, Math.PI / 2, 8);
+    addBox(g, 0.02 * s, 0.035 * s, 0.025 * s, clay, side * 0.07 * s, 0.78 * s, 0);
   }
 
   // —— Rank headgear ——
@@ -415,10 +433,14 @@ function buildElephant(faction: Faction): THREE.Object3D {
     root.add(leg);
   }
 
-  // Mahout (terracotta rider)
-  const rider = buildTerracottaWarrior({ faction, rank: "cavalry", height: 0.42 });
-  rider.position.set(0, 0.58, -0.02);
-  rider.scale.setScalar(0.55);
+  // Mahout — full-readable terracotta rider (no extra scale crush)
+  const rider = buildTerracottaWarrior({
+    faction,
+    rank: "cavalry",
+    height: 0.58,
+    holdSpear: true,
+  });
+  rider.position.set(0, 0.64, -0.02);
   root.add(rider);
 
   enableShadows(root);
@@ -475,11 +497,10 @@ function buildHorse(faction: Faction): THREE.Object3D {
   const rider = buildTerracottaWarrior({
     faction,
     rank: "cavalry",
-    height: 0.5,
+    height: 0.6,
     holdSpear: true,
   });
-  rider.position.set(0, 0.4, -0.02);
-  rider.scale.setScalar(0.7);
+  rider.position.set(0, 0.44, -0.04);
   root.add(rider);
 
   enableShadows(root);
@@ -528,11 +549,10 @@ function buildChariot(faction: Faction): THREE.Object3D {
   const driver = buildTerracottaWarrior({
     faction,
     rank: "officer",
-    height: 0.55,
+    height: 0.62,
     holdSpear: true,
   });
-  driver.position.set(0, 0.3, -0.02);
-  driver.scale.setScalar(0.75);
+  driver.position.set(0, 0.32, -0.04);
   root.add(driver);
 
   enableShadows(root);
@@ -566,13 +586,14 @@ function buildCannon(faction: Faction): THREE.Object3D {
     void wheel;
   }
 
+  // Gunner stands on the disc beside the carriage — clear humanoid silhouette
   const gunner = buildTerracottaWarrior({
     faction,
     rank: "gunner",
-    height: 0.48,
+    height: 0.72,
+    holdStaff: true,
   });
-  gunner.position.set(0.02, 0.28, -0.18);
-  gunner.scale.setScalar(0.65);
+  gunner.position.set(0.14, 0.1, -0.2);
   root.add(gunner);
 
   enableShadows(root);
@@ -627,6 +648,15 @@ export function buildXiangqiChariot(faction: Faction): THREE.Object3D {
 
 export function buildHanSash(_faction: Faction): THREE.Object3D {
   return new THREE.Group();
+}
+
+/** Collect terracotta warrior group names under a piece root (for tests / QA). */
+export function findQinWarriors(root: THREE.Object3D): string[] {
+  const names: string[] = [];
+  root.traverse((node) => {
+    if (node.name.startsWith("qin_")) names.push(node.name);
+  });
+  return names;
 }
 
 export const CHARIOT_RIDER_LIFT = 0;
