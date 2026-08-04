@@ -59,9 +59,9 @@ export const XIANGQI_ROLE_ZH: Record<Faction, Record<"k" | "a" | "b" | "n" | "r"
 };
 
 /**
- * Fallback western sculpt key when a template is needed.
- * Live Xiangqi visuals are procedural Qin terracotta warriors
- * (see xiangqiFigures) — this mapping is only a factory fallback.
+ * Which western Meshy sculpt stands in for a Xiangqi rank.
+ * 相 (red) → court mage; 象 (black) → elephant mount (sculpt key unused at render);
+ * 炮 → ranged caster; 車 → chariot + scaled rider; others map 1:1.
  */
 export function xiangqiSculpt(kind: PieceKind, color: Faction): ChessSculpt {
   switch (kind) {
