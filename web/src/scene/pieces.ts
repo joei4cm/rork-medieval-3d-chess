@@ -9,10 +9,12 @@ import {
   type PieceAnimationSet,
 } from "../assets/generated";
 import type { Faction, PieceKind } from "../core/types";
-import { BADGE_LIFT, BADGE_SCALE, TOKEN_SCALE, rankBadgeTexture, tacticalTokenTexture } from "./rankBadges";
+import { xiangqiSculpt } from "../xiangqi/identity";
+import { BADGE_LIFT, BADGE_SCALE, TOKEN_SCALE, rankBadgeTexture, tacticalTokenTexture, xiangqiRankBadgeTexture, xiangqiTacticalTokenTexture } from "./rankBadges";
 import { radialTexture } from "./textures";
 import { Ease, type TweenManager } from "./tween";
 import { attachWeapons, type AttachedArms } from "./weapons";
+import { xiangqiDiscTexture } from "./xiangqiTextures";
 
 /** Rendered height (world units, 1 unit = 1 board square) per piece kind. */
 export const PIECE_HEIGHT: Record<PieceKind, number> = {
@@ -236,6 +238,8 @@ export interface PieceVisualOptions {
   idleAnimation?: boolean;
   /** Floating rank crest above the figure's head. */
   rankBadge?: boolean;
+  /** Xiangqi: lacquer disc pedestal, tighter footprint, Chinese crest. */
+  xiangqiStyle?: boolean;
 }
 
 /** The crown: king and queen move slower and stand taller than the soldiery. */
@@ -387,17 +391,21 @@ export class PieceView {
     });
 
     const accent = FACTION_ACCENT[color];
+    const xiangqi = Boolean(options.xiangqiStyle);
+    const footprint = xiangqi ? 0.52 : 1;
+
     const glowMaterial = new THREE.MeshBasicMaterial({
       map: sharedGlowTexture(),
-      color: accent,
+      color: xiangqi ? (color === "w" ? 0xc62828 : 0xc9a45a) : accent,
       transparent: true,
-      opacity: 0.16,
+      opacity: xiangqi ? 0.22 : 0.16,
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
     this.glow = new THREE.Mesh(sharedDiscGeometry(), glowMaterial);
     this.glow.rotation.x = -Math.PI / 2;
     this.glow.position.y = 0.012;
+    this.glow.scale.setScalar(footprint);
     this.glow.renderOrder = 3;
     this.container.add(this.glow);
 
@@ -406,28 +414,59 @@ export class PieceView {
         map: sharedShadowTexture(),
         color: 0x000000,
         transparent: true,
-        opacity: 0.55,
+        opacity: xiangqi ? 0.4 : 0.55,
         depthWrite: false,
       });
       this.shadow = new THREE.Mesh(sharedDiscGeometry(), shadowMaterial);
       this.shadow.rotation.x = -Math.PI / 2;
       this.shadow.position.y = 0.006;
-      this.shadow.scale.setScalar(0.85);
+      this.shadow.scale.setScalar(0.85 * footprint);
       this.shadow.renderOrder = 1;
       this.container.add(this.shadow);
     }
 
+    if (xiangqi) {
+      // Traditional lacquer disc under the figure — anchors it to the point.
+      const discMap = xiangqiDiscTexture(kind, color);
+      const discMat = new THREE.MeshStandardMaterial({
+        map: discMap,
+        roughness: 0.55,
+        metalness: 0.08,
+      });
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.38, 0.1, 32), discMat);
+      disc.position.y = 0.05;
+      disc.castShadow = true;
+      disc.receiveShadow = true;
+      disc.userData.piece = this;
+      this.container.add(disc);
+      // Lift the figure onto the disc so feet sit on the lacquer face.
+      this.visual.position.y = 0.1;
+      this.visual.scale.setScalar(0.82);
+      this.materials.push(discMat);
+    }
+
     this.badgeWanted = options.rankBadge !== false;
+    this.xiangqiStyle = xiangqi;
     this.buildBadge();
 
     this.setupAnimations(model, clips, options.idleAnimation !== false);
     this.equipArms(model, unit, baseY);
   }
 
+  /** True when this figure was built for the Xiangqi board. */
+  get isXiangqi(): boolean {
+    return this.xiangqiStyle;
+  }
+
+  private xiangqiStyle = false;
+
   /** Crest sprite, parked just above the figure's crown. */
   private buildBadge(): void {
+    const map = this.xiangqiStyle
+      ? xiangqiRankBadgeTexture(this.kind, this.color)
+      : rankBadgeTexture(this.kind, this.color);
     const material = new THREE.SpriteMaterial({
-      map: rankBadgeTexture(this.kind, this.color),
+      map,
       transparent: true,
       // Always legible: a crest hidden behind the piece in front of it would
       // defeat the whole point of putting it there.
@@ -437,8 +476,8 @@ export class PieceView {
       sizeAttenuation: true,
     });
     const badge = new THREE.Sprite(material);
-    badge.scale.setScalar(BADGE_SCALE[this.kind]);
-    badge.position.y = PIECE_HEIGHT[this.kind] + BADGE_LIFT;
+    badge.scale.setScalar(BADGE_SCALE[this.kind] * (this.xiangqiStyle ? 1.15 : 1));
+    badge.position.y = PIECE_HEIGHT[this.kind] * (this.xiangqiStyle ? 0.82 : 1) + BADGE_LIFT + (this.xiangqiStyle ? 0.1 : 0);
     badge.renderOrder = 40;
     badge.visible = this.badgeWanted;
     badge.frustumCulled = false;
@@ -483,7 +522,9 @@ export class PieceView {
 
   private buildToken(): void {
     const material = new THREE.MeshBasicMaterial({
-      map: tacticalTokenTexture(this.kind, this.color),
+      map: this.xiangqiStyle
+        ? xiangqiTacticalTokenTexture(this.kind, this.color)
+        : tacticalTokenTexture(this.kind, this.color),
       transparent: true,
       opacity: 0,
       depthWrite: false,
@@ -493,7 +534,7 @@ export class PieceView {
     const token = new THREE.Mesh(sharedTokenGeometry(), material);
     token.rotation.x = -Math.PI / 2;
     token.position.y = 0.055;
-    token.scale.setScalar(TOKEN_SCALE[this.kind]);
+    token.scale.setScalar(TOKEN_SCALE[this.kind] * (this.xiangqiStyle ? 0.85 : 1));
     token.renderOrder = 12;
     token.frustumCulled = false;
     token.visible = false;
@@ -1460,7 +1501,13 @@ export class PieceFactory {
   }
 
   create(kind: PieceKind, color: Faction, options: PieceVisualOptions): PieceView {
-    const sculpt = kind === "a" ? "b" : kind === "c" ? "q" : kind;
+    const sculpt = options.xiangqiStyle
+      ? xiangqiSculpt(kind, color)
+      : kind === "a"
+        ? "b"
+        : kind === "c"
+          ? "q"
+          : (kind as "p" | "n" | "b" | "r" | "q" | "k");
     const template = this.templates.get(`${color}${sculpt}`);
     if (!template) throw new Error(`piece template "${color}${sculpt}" not loaded`);
 

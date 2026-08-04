@@ -225,7 +225,7 @@ const en: Dictionary = {
     xiangqi: {
       p: "Soldier",
       n: "Horse",
-      b: "Elephant",
+      b: "Chancellor / Elephant",
       r: "Chariot",
       c: "Cannon",
       a: "Advisor",
@@ -349,10 +349,10 @@ const zh: Dictionary = {
     xiangqi: {
       p: "兵/卒",
       n: "马",
-      b: "相/象",
+      b: "丞相/大象",
       r: "车",
-      c: "炮",
-      a: "士/仕",
+      c: "大炮",
+      a: "仕/士",
       k: "帅/将",
     },
   },

@@ -446,3 +446,96 @@ export function disposeRankBadgeTextures(): void {
   for (const texture of cache.values()) texture.dispose();
   cache.clear();
 }
+
+const xiangqiCache = new Map<string, THREE.CanvasTexture>();
+
+/** Floating crest for Xiangqi — lacquer disc with the Chinese character. */
+export function xiangqiRankBadgeTexture(kind: PieceKind, faction: Faction): THREE.CanvasTexture {
+  const key = `xq-badge-${faction}${kind}`;
+  const cached = xiangqiCache.get(key);
+  if (cached) return cached;
+
+  const { canvas, ctx } = canvas2d();
+  const glyph = (() => {
+    try {
+      // Lazy import avoided — duplicate the glyph table used by identity.
+      const table: Record<string, Record<string, string>> = {
+        w: { k: "帅", a: "仕", b: "相", n: "傌", r: "俥", c: "炮", p: "兵" },
+        b: { k: "将", a: "士", b: "象", n: "馬", r: "車", c: "砲", p: "卒" },
+      };
+      return table[faction][kind] ?? "棋";
+    } catch {
+      return "棋";
+    }
+  })();
+
+  const field = faction === "w" ? "#c62828" : "#1a1512";
+  const ink = faction === "w" ? "#ffe8c8" : "#e8d5a0";
+  const rim = faction === "w" ? "#f0d090" : "#c9a45a";
+
+  const halo = ctx.createRadialGradient(SIZE / 2, SIZE / 2, 6, SIZE / 2, SIZE / 2, SIZE / 2);
+  halo.addColorStop(0, faction === "w" ? "rgba(255,80,60,0.45)" : "rgba(200,160,80,0.35)");
+  halo.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = halo;
+  ctx.fillRect(0, 0, SIZE, SIZE);
+
+  ctx.beginPath();
+  ctx.arc(SIZE / 2, SIZE / 2, SIZE * 0.38, 0, Math.PI * 2);
+  ctx.fillStyle = field;
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = rim;
+  ctx.stroke();
+
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `bold ${Math.round(SIZE * 0.42)}px "Noto Serif SC","Songti SC",serif`;
+  ctx.fillText(glyph, SIZE / 2, SIZE / 2 + 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  texture.needsUpdate = true;
+  xiangqiCache.set(key, texture);
+  return texture;
+}
+
+/** Overhead tactical counter for Xiangqi — character on a lacquer disc. */
+export function xiangqiTacticalTokenTexture(kind: PieceKind, faction: Faction): THREE.CanvasTexture {
+  const key = `xq-token-${faction}${kind}`;
+  const cached = xiangqiCache.get(key);
+  if (cached) return cached;
+
+  const { canvas, ctx } = canvas2d();
+  const glyphTable: Record<string, Record<string, string>> = {
+    w: { k: "帅", a: "仕", b: "相", n: "傌", r: "俥", c: "炮", p: "兵" },
+    b: { k: "将", a: "士", b: "象", n: "馬", r: "車", c: "砲", p: "卒" },
+  };
+  const glyph = glyphTable[faction][kind] ?? "棋";
+  const field = faction === "w" ? "#e8c078" : "#2a221c";
+  const ink = faction === "w" ? "#8b1515" : "#e8d5a0";
+  const rim = faction === "w" ? "#8b1e1e" : "#c9a45a";
+
+  ctx.beginPath();
+  ctx.arc(SIZE / 2, SIZE / 2, SIZE * 0.44, 0, Math.PI * 2);
+  ctx.fillStyle = field;
+  ctx.fill();
+  ctx.lineWidth = 8;
+  ctx.strokeStyle = rim;
+  ctx.stroke();
+
+  ctx.fillStyle = ink;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.font = `bold ${Math.round(SIZE * 0.48)}px "Noto Serif SC","Songti SC",serif`;
+  ctx.fillText(glyph, SIZE / 2, SIZE / 2 + 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = 4;
+  texture.needsUpdate = true;
+  xiangqiCache.set(key, texture);
+  return texture;
+}
+

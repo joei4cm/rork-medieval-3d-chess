@@ -12,6 +12,7 @@ import {
   selectMarkerTexture,
   shockwaveTexture,
 } from "./textures";
+import { xiangqiRiverTexture, xiangqiWoodTexture } from "./xiangqiTextures";
 import type { HighlightKind } from "./board";
 
 const HIGHLIGHT_COLORS: Record<HighlightKind, number> = {
@@ -143,6 +144,9 @@ export class XiangqiBoardView {
   private landingCursor = 0;
   private markerMaps: Partial<Record<HighlightKind, THREE.Texture>> = {};
 
+  private riverFlow: THREE.MeshStandardMaterial | null = null;
+  private mistSprites: THREE.Mesh[] = [];
+
   constructor() {
     this.group.name = "xiangqi-board";
     const geom = getBoardGeometry();
@@ -150,102 +154,236 @@ export class XiangqiBoardView {
     const width = (geom.fileCount - 1) * TILE + TILE * 1.35;
     const depth = (geom.rankCount - 1) * TILE + TILE * 1.35;
 
+    // Thick lacquered wood slab with grain.
+    const woodMap = this.track(xiangqiWoodTexture(false));
     const wood = this.track(
       new THREE.MeshStandardMaterial({
-        color: 0xc4a06a,
-        roughness: 0.62,
-        metalness: 0.08,
+        map: woodMap,
+        color: 0xe8c890,
+        roughness: 0.58,
+        metalness: 0.06,
       }),
     );
     this.baseMaterial = wood;
 
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(width, 0.22, depth), wood);
-    slab.position.y = BOARD_TOP - 0.11;
+    const slab = new THREE.Mesh(new THREE.BoxGeometry(width, 0.28, depth), wood);
+    slab.position.y = BOARD_TOP - 0.14;
     slab.receiveShadow = true;
     slab.castShadow = true;
     this.group.add(slab);
 
+    // Vermilion lacquer rim / frame.
     const rim = this.track(
       new THREE.MeshStandardMaterial({
         color: 0x8b1e1e,
-        roughness: 0.45,
-        metalness: 0.25,
+        roughness: 0.4,
+        metalness: 0.28,
         emissive: 0x3a0808,
-        emissiveIntensity: 0.15,
+        emissiveIntensity: 0.18,
       }),
     );
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(width + 0.28, 0.28, depth + 0.28),
-      rim,
-    );
-    frame.position.y = BOARD_TOP - 0.16;
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(width + 0.34, 0.36, depth + 0.34), rim);
+    frame.position.y = BOARD_TOP - 0.22;
     frame.receiveShadow = true;
+    frame.castShadow = true;
     this.group.add(frame);
 
-    // River band between ranks 4 and 5.
+    // Inner gold trim.
+    const trim = this.track(
+      new THREE.MeshStandardMaterial({
+        color: 0xd4a84a,
+        roughness: 0.35,
+        metalness: 0.65,
+        emissive: 0x3a2808,
+        emissiveIntensity: 0.12,
+      }),
+    );
+    const trimMesh = new THREE.Mesh(new THREE.BoxGeometry(width + 0.08, 0.04, depth + 0.08), trim);
+    trimMesh.position.y = BOARD_TOP - 0.01;
+    this.group.add(trimMesh);
+
+    // River trench — recessed channel with flowing water.
+    const trench = new THREE.Mesh(
+      new THREE.BoxGeometry((geom.fileCount - 1) * TILE + 0.08, 0.1, TILE * 0.95),
+      this.track(
+        new THREE.MeshStandardMaterial({
+          color: 0x3a2818,
+          roughness: 0.9,
+          metalness: 0.02,
+        }),
+      ),
+    );
+    trench.position.set(0, BOARD_TOP - 0.06, 0);
+    trench.receiveShadow = true;
+    this.group.add(trench);
+
+    const riverMap = this.track(xiangqiRiverTexture());
     const river = this.track(
       new THREE.MeshStandardMaterial({
-        color: 0x6a9bb8,
-        roughness: 0.35,
-        metalness: 0.2,
+        map: riverMap,
+        color: 0x7eb8d0,
+        roughness: 0.22,
+        metalness: 0.35,
         transparent: true,
-        opacity: 0.55,
-        emissive: 0x1a3344,
-        emissiveIntensity: 0.25,
+        opacity: 0.82,
+        emissive: 0x1a4058,
+        emissiveIntensity: 0.35,
       }),
     );
     this.riverMaterial = river;
-    const riverMesh = new THREE.Mesh(new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.92), river);
+    this.riverFlow = river;
+    const riverMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE, TILE * 0.88),
+      river,
+    );
     riverMesh.rotation.x = -Math.PI / 2;
-    riverMesh.position.set(0, BOARD_TOP + 0.002, 0);
+    riverMesh.position.set(0, BOARD_TOP - 0.01, 0);
     this.group.add(riverMesh);
 
+    // Soft mist sprites over the river.
+    const mistMat = this.track(
+      new THREE.MeshBasicMaterial({
+        map: this.track(radialTexture("rgba(200,230,255,0.55)", "rgba(200,230,255,0)")),
+        transparent: true,
+        opacity: 0.35,
+        depthWrite: false,
+      }),
+    );
+    for (let i = 0; i < 5; i++) {
+      const mist = new THREE.Mesh(new THREE.PlaneGeometry(TILE * 1.8, TILE * 0.7), mistMat.clone());
+      mist.rotation.x = -Math.PI / 2;
+      mist.position.set((i - 2) * TILE * 1.6, BOARD_TOP + 0.04, (i % 2 === 0 ? 0.08 : -0.08) * TILE);
+      this.group.add(mist);
+      this.mistSprites.push(mist);
+    }
+
+    // River banks — slightly raised lips of darker wood.
+    const bankMat = this.track(
+      new THREE.MeshStandardMaterial({
+        map: this.track(xiangqiWoodTexture(true)),
+        color: 0x8a6238,
+        roughness: 0.7,
+        metalness: 0.04,
+      }),
+    );
+    for (const z of [0.52 * TILE, -0.52 * TILE]) {
+      const bank = new THREE.Mesh(
+        new THREE.BoxGeometry((geom.fileCount - 1) * TILE, 0.04, 0.12),
+        bankMat,
+      );
+      bank.position.set(0, BOARD_TOP + 0.01, z);
+      bank.receiveShadow = true;
+      this.group.add(bank);
+    }
+
+    // Palace floors — inlaid darker wood panels under the nine-palace.
+    const palaceMat = this.track(
+      new THREE.MeshStandardMaterial({
+        map: this.track(xiangqiWoodTexture(true)),
+        color: 0xa87840,
+        roughness: 0.5,
+        metalness: 0.1,
+        emissive: 0x2a1808,
+        emissiveIntensity: 0.08,
+      }),
+    );
+    for (const baseRank of [0, 7]) {
+      const zCentre = (geom.halfRanks - (baseRank + 1)) * TILE;
+      const palace = new THREE.Mesh(
+        new THREE.BoxGeometry(2 * TILE + 0.06, 0.03, 2 * TILE + 0.06),
+        palaceMat,
+      );
+      palace.position.set(0, BOARD_TOP + 0.008, zCentre);
+      palace.receiveShadow = true;
+      this.group.add(palace);
+    }
+
     // Grid lines
-    const lineMat = this.track(new THREE.LineBasicMaterial({ color: 0x2a1810, transparent: true, opacity: 0.85 }));
+    const lineMat = this.track(new THREE.LineBasicMaterial({ color: 0x2a1810, transparent: true, opacity: 0.9 }));
     this.lineMaterial = lineMat;
     const points: THREE.Vector3[] = [];
+    const yLine = BOARD_TOP + 0.018;
     for (let r = 0; r < geom.rankCount; r++) {
       const z = (geom.halfRanks - r) * TILE;
       const x0 = -geom.halfFiles * TILE;
       const x1 = geom.halfFiles * TILE;
-      points.push(new THREE.Vector3(x0, BOARD_TOP + 0.004, z), new THREE.Vector3(x1, BOARD_TOP + 0.004, z));
+      points.push(new THREE.Vector3(x0, yLine, z), new THREE.Vector3(x1, yLine, z));
     }
     for (let f = 0; f < geom.fileCount; f++) {
       const x = (f - geom.halfFiles) * TILE;
-      // Vertical lines break at the river (except edges).
       if (f === 0 || f === geom.fileCount - 1) {
         points.push(
-          new THREE.Vector3(x, BOARD_TOP + 0.004, geom.halfRanks * TILE),
-          new THREE.Vector3(x, BOARD_TOP + 0.004, -geom.halfRanks * TILE),
+          new THREE.Vector3(x, yLine, geom.halfRanks * TILE),
+          new THREE.Vector3(x, yLine, -geom.halfRanks * TILE),
         );
       } else {
         points.push(
-          new THREE.Vector3(x, BOARD_TOP + 0.004, geom.halfRanks * TILE),
-          new THREE.Vector3(x, BOARD_TOP + 0.004, 0.5 * TILE),
-          new THREE.Vector3(x, BOARD_TOP + 0.004, -0.5 * TILE),
-          new THREE.Vector3(x, BOARD_TOP + 0.004, -geom.halfRanks * TILE),
+          new THREE.Vector3(x, yLine, geom.halfRanks * TILE),
+          new THREE.Vector3(x, yLine, 0.5 * TILE),
+          new THREE.Vector3(x, yLine, -0.5 * TILE),
+          new THREE.Vector3(x, yLine, -geom.halfRanks * TILE),
         );
       }
     }
-    // Palace diagonals
+    // Palace diagonals (九宫)
     for (const baseRank of [0, 7]) {
       const z0 = (geom.halfRanks - baseRank) * TILE;
       const z2 = (geom.halfRanks - (baseRank + 2)) * TILE;
       const x3 = (3 - geom.halfFiles) * TILE;
       const x5 = (5 - geom.halfFiles) * TILE;
       points.push(
-        new THREE.Vector3(x3, BOARD_TOP + 0.005, z0),
-        new THREE.Vector3(x5, BOARD_TOP + 0.005, z2),
-        new THREE.Vector3(x5, BOARD_TOP + 0.005, z0),
-        new THREE.Vector3(x3, BOARD_TOP + 0.005, z2),
+        new THREE.Vector3(x3, yLine + 0.001, z0),
+        new THREE.Vector3(x5, yLine + 0.001, z2),
+        new THREE.Vector3(x5, yLine + 0.001, z0),
+        new THREE.Vector3(x3, yLine + 0.001, z2),
       );
     }
+    // Traditional "cannon / soldier" position markers (炮位 / 兵位)
+    const markOffsets: [number, number][] = [
+      [1, 2],
+      [7, 2],
+      [0, 3],
+      [2, 3],
+      [4, 3],
+      [6, 3],
+      [8, 3],
+      [1, 7],
+      [7, 7],
+      [0, 6],
+      [2, 6],
+      [4, 6],
+      [6, 6],
+      [8, 6],
+    ];
+    for (const [f, r] of markOffsets) {
+      const x = (f - geom.halfFiles) * TILE;
+      const z = (geom.halfRanks - r) * TILE;
+      const s = 0.1;
+      points.push(
+        new THREE.Vector3(x - s, yLine + 0.001, z - s * 0.6),
+        new THREE.Vector3(x - s * 0.35, yLine + 0.001, z - s * 0.6),
+        new THREE.Vector3(x - s, yLine + 0.001, z - s * 0.6),
+        new THREE.Vector3(x - s, yLine + 0.001, z - s * 0.2),
+        new THREE.Vector3(x + s, yLine + 0.001, z - s * 0.6),
+        new THREE.Vector3(x + s * 0.35, yLine + 0.001, z - s * 0.6),
+        new THREE.Vector3(x + s, yLine + 0.001, z - s * 0.6),
+        new THREE.Vector3(x + s, yLine + 0.001, z - s * 0.2),
+        new THREE.Vector3(x - s, yLine + 0.001, z + s * 0.6),
+        new THREE.Vector3(x - s * 0.35, yLine + 0.001, z + s * 0.6),
+        new THREE.Vector3(x - s, yLine + 0.001, z + s * 0.6),
+        new THREE.Vector3(x - s, yLine + 0.001, z + s * 0.2),
+        new THREE.Vector3(x + s, yLine + 0.001, z + s * 0.6),
+        new THREE.Vector3(x + s * 0.35, yLine + 0.001, z + s * 0.6),
+        new THREE.Vector3(x + s, yLine + 0.001, z + s * 0.6),
+        new THREE.Vector3(x + s, yLine + 0.001, z + s * 0.2),
+      );
+    }
+
     const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
     this.group.add(new THREE.LineSegments(lineGeo, lineMat));
 
-    // River labels (楚河 / 汉界) as simple planes with canvas textures
-    this.addRiverLabel("楚 河", -2.2 * TILE, "#1a3050");
-    this.addRiverLabel("汉 界", 2.2 * TILE, "#5a1515");
+    this.addRiverLabel("楚 河", -2.35 * TILE, "#102838");
+    this.addRiverLabel("汉 界", 2.35 * TILE, "#4a1010");
 
     this.markerMaps.select = this.track(selectMarkerTexture());
     this.markerMaps.move = this.track(moveMarkerTexture());
@@ -254,13 +392,14 @@ export class XiangqiBoardView {
     this.markerMaps.hint = this.track(moveMarkerTexture());
     this.markerMaps.last = this.track(radialTexture("#ffd27a", "rgba(0,0,0,0)"));
 
-    const hitGeo = new THREE.CircleGeometry(TILE * 0.38, 20);
+    // Smaller hit discs — pieces stand on points, not tile centres.
+    const hitGeo = new THREE.CircleGeometry(TILE * 0.28, 20);
     hitGeo.rotateX(-Math.PI / 2);
     const hitMat = this.track(new THREE.MeshBasicMaterial({ visible: false }));
 
     for (const square of geom.allSquares()) {
       const hit = new THREE.Mesh(hitGeo, hitMat);
-      hit.position.copy(squareToWorld(square, BOARD_TOP + 0.01));
+      hit.position.copy(squareToWorld(square, BOARD_TOP + 0.02));
       hit.userData.square = square;
       this.tiles.push(hit);
       this.group.add(hit);
@@ -276,9 +415,9 @@ export class XiangqiBoardView {
         depthWrite: false,
       }),
     );
-    this.hoverRing = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.42, 28), hoverMat);
+    this.hoverRing = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.32, 28), hoverMat);
     this.hoverRing.rotation.x = -Math.PI / 2;
-    this.hoverRing.position.y = BOARD_TOP + 0.012;
+    this.hoverRing.position.y = BOARD_TOP + 0.022;
     this.group.add(this.hoverRing);
 
     this.initWaves();
@@ -316,9 +455,9 @@ export class XiangqiBoardView {
         depthWrite: false,
       }),
     );
-    const glow = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.48, 24), glowMat);
+    const glow = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.32, 24), glowMat);
     glow.rotation.x = -Math.PI / 2;
-    glow.position.copy(squareToWorld(square, BOARD_TOP + 0.008));
+    glow.position.copy(squareToWorld(square, BOARD_TOP + 0.02));
     this.group.add(glow);
 
     const markerMat = this.track(
@@ -329,9 +468,9 @@ export class XiangqiBoardView {
         depthWrite: false,
       }),
     );
-    const marker = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.36, 28), markerMat);
+    const marker = new THREE.Mesh(new THREE.CircleGeometry(TILE * 0.26, 28), markerMat);
     marker.rotation.x = -Math.PI / 2;
-    marker.position.copy(squareToWorld(square, BOARD_TOP + 0.016));
+    marker.position.copy(squareToWorld(square, BOARD_TOP + 0.026));
     this.group.add(marker);
 
     const beamMat = this.track(
@@ -343,8 +482,8 @@ export class XiangqiBoardView {
         side: THREE.DoubleSide,
       }),
     );
-    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.12, 0.55, 10, 1, true), beamMat);
-    beam.position.copy(squareToWorld(square, BOARD_TOP + 0.275));
+    const beam = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.08, 0.45, 10, 1, true), beamMat);
+    beam.position.copy(squareToWorld(square, BOARD_TOP + 0.25));
     this.group.add(beam);
 
     return {
@@ -525,6 +664,19 @@ export class XiangqiBoardView {
 
   update(delta: number): void {
     this.elapsed += delta;
+
+    // Slow river flow + mist drift.
+    if (this.riverFlow?.map) {
+      this.riverFlow.map.offset.x = (this.elapsed * 0.04) % 1;
+      this.riverFlow.needsUpdate = true;
+    }
+    for (let i = 0; i < this.mistSprites.length; i++) {
+      const mist = this.mistSprites[i];
+      const mat = mist.material as THREE.MeshBasicMaterial;
+      mat.opacity = 0.22 + 0.12 * Math.sin(this.elapsed * 0.7 + i);
+      mist.position.x += Math.sin(this.elapsed * 0.3 + i) * delta * 0.05;
+    }
+
     for (const slot of this.slots.values()) {
       if (!slot.kind) {
         slot.glowMaterial.opacity = THREE.MathUtils.damp(slot.glowMaterial.opacity, 0, 12, delta);
