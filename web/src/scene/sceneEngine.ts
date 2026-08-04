@@ -622,6 +622,11 @@ export class SceneEngine {
     for (const unsub of this.controllerUnsubs) unsub();
     this.controllerUnsubs = [];
     this.controller = controller;
+    const liveVariant = controller.getSnapshot().variant;
+    if (liveVariant && liveVariant !== this.variant) {
+      // Align board geometry immediately when the ruleset changes.
+      this.setVariant(liveVariant);
+    }
     this.controller.setAnimator((event) => this.animateMove(event));
     this.controllerUnsubs.push(
       this.controller.on("state", this.onStateBound),
@@ -995,12 +1000,18 @@ export class SceneEngine {
     if (!this.factory.isReady) return;
 
     const settings = QUALITY_SETTINGS[this.preset];
+    const xiangqi = this.controller.getSnapshot().variant === "xiangqi" || this.variant === "xiangqi";
+    // Keep the scene flag aligned with the live ruleset.
+    if (xiangqi && this.variant !== "xiangqi") {
+      this.variant = "xiangqi";
+      setBoardVariant("xiangqi");
+    }
     for (const entry of this.controller.getBoard()) {
       const view = this.factory.create(entry.kind, entry.color, {
         contactShadows: settings.contactShadows,
         idleAnimation: settings.characterAnimations,
         rankBadge: this.rankBadges,
-        xiangqiStyle: this.variant === "xiangqi",
+        xiangqiStyle: xiangqi,
       });
       if (this.tactical) view.setFlat(true);
       view.container.position.copy(squareToWorld(entry.square));

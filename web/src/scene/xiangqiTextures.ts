@@ -55,8 +55,8 @@ export function xiangqiDiscTexture(kind: PieceKind, faction: Faction): THREE.Can
   ctx.fillStyle = faction === "w" ? "#8b1515" : "#e8d5a0";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = "bold 128px 'Noto Serif SC','Songti SC','SimSun',serif";
-  ctx.fillText(glyph, cx, cy + 6);
+  ctx.font = "bold 148px 'Noto Serif SC','Songti SC','SimSun',serif";
+  ctx.fillText(glyph, cx, cy + 8);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;

@@ -430,18 +430,18 @@ export class PieceView {
       const discMap = xiangqiDiscTexture(kind, color);
       const discMat = new THREE.MeshStandardMaterial({
         map: discMap,
-        roughness: 0.55,
-        metalness: 0.08,
+        roughness: 0.5,
+        metalness: 0.1,
       });
-      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.38, 0.1, 32), discMat);
-      disc.position.y = 0.05;
+      const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.42, 0.44, 0.12, 36), discMat);
+      disc.position.y = 0.06;
       disc.castShadow = true;
       disc.receiveShadow = true;
       disc.userData.piece = this;
       this.container.add(disc);
       // Lift the figure onto the disc so feet sit on the lacquer face.
-      this.visual.position.y = 0.1;
-      this.visual.scale.setScalar(0.82);
+      this.visual.position.y = 0.12;
+      this.visual.scale.setScalar(0.72);
       this.materials.push(discMat);
     }
 
