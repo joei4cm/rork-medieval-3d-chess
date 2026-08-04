@@ -61,16 +61,16 @@ function bronze(color = 0xb08a40): THREE.MeshStandardMaterial {
 function palette(faction: Faction) {
   if (faction === "w") {
     return {
-      skin: 0xc4a890,
+      skin: 0xb89878,
       hair: 0x1a1210,
-      cloth: 0x6a1018,
-      armor: 0xa01818,
-      armorDark: 0x6a1010,
-      scale: 0x8a1414,
-      trim: 0xd4a84a,
-      wood: 0x8a6238,
+      cloth: 0x5a0c10,
+      armor: 0x8b1515,
+      armorDark: 0x5a0c0c,
+      scale: 0x6e1010,
+      trim: 0xc9a050,
+      wood: 0x7a5530,
       boot: 0x2a1a12,
-      lacquerRim: 0xc62828,
+      lacquerRim: 0xa01818,
       ink: 0x6a1010,
     };
   }
@@ -141,7 +141,7 @@ function enableShadows(root: THREE.Object3D): void {
 }
 
 /** Lacquer identity disc — Chinese seal foot, not western glow ring. */
-function lacquerDisc(faction: Faction, kind: PieceKind, radius = 0.3): THREE.Group {
+export function buildXiangqiDisc(faction: Faction, kind: PieceKind, radius = 0.3): THREE.Group {
   const p = palette(faction);
   const g = new THREE.Group();
   g.name = "seal_disc";
@@ -276,7 +276,7 @@ function buildHanSoldier(opts: SoldierOpts): THREE.Group {
 
   // Torso + 护心镜
   addCyl(g, 0.1 * s, 0.118 * s, 0.24 * s, skin, 0, 0.54 * s, 0, 0, 0, 0, 16);
-  addLamellar(g, armor, scaleMat, s, 0.46 * s, 4);
+  addLamellar(g, armor, scaleMat, s, 0.46 * s, 6);
   addCyl(g, 0.055 * s, 0.055 * s, 0.02 * s, trim, 0, 0.56 * s, 0.12 * s, Math.PI / 2, 0, 0, 16); // mirror plate
 
   // Belt + sash knot
@@ -408,7 +408,7 @@ function buildHanSoldier(opts: SoldierOpts): THREE.Group {
 function buildMarshal(faction: Faction): THREE.Object3D {
   const root = new THREE.Group();
   root.name = "xq_marshal";
-  root.add(lacquerDisc(faction, "k", 0.34));
+  root.add(buildXiangqiDisc(faction, "k", 0.34));
   const fig = buildHanSoldier({ faction, rank: "marshal", height: 0.88, weapon: "jian" });
   fig.position.y = 0.08;
   root.add(fig);
@@ -419,7 +419,7 @@ function buildMarshal(faction: Faction): THREE.Object3D {
 function buildGuard(faction: Faction): THREE.Object3D {
   const root = new THREE.Group();
   root.name = "xq_guard";
-  root.add(lacquerDisc(faction, "a", 0.32));
+  root.add(buildXiangqiDisc(faction, "a", 0.32));
   const fig = buildHanSoldier({ faction, rank: "guard", height: 0.8, weapon: "hu" });
   fig.position.y = 0.08;
   root.add(fig);
@@ -430,7 +430,7 @@ function buildGuard(faction: Faction): THREE.Object3D {
 function buildMinister(faction: Faction): THREE.Object3D {
   const root = new THREE.Group();
   root.name = "xq_minister";
-  root.add(lacquerDisc(faction, "b", 0.33));
+  root.add(buildXiangqiDisc(faction, "b", 0.33));
   const fig = buildHanSoldier({ faction, rank: "minister", height: 0.84, weapon: "staff" });
   fig.position.y = 0.08;
   root.add(fig);
@@ -442,7 +442,7 @@ function buildElephant(faction: Faction): THREE.Object3D {
   const p = palette(faction);
   const root = new THREE.Group();
   root.name = "xq_elephant";
-  root.add(lacquerDisc(faction, "b", 0.38));
+  root.add(buildXiangqiDisc(faction, "b", 0.38));
 
   const hide = std(faction === "w" ? 0xa89078 : 0x4a4440, 0.78, 0.04, 0.4);
   const ivory = std(0xe0d4b8, 0.4, 0.15, 0.7);
@@ -511,7 +511,7 @@ function buildHorse(faction: Faction): THREE.Object3D {
   const p = palette(faction);
   const root = new THREE.Group();
   root.name = "xq_horse";
-  root.add(lacquerDisc(faction, "n", 0.34));
+  root.add(buildXiangqiDisc(faction, "n", 0.34));
 
   const hide = std(faction === "w" ? 0x9a8070 : 0x3a3834, 0.75, 0.04, 0.45);
   const mane = std(p.hair, 0.85, 0.02, 0.3);
@@ -568,7 +568,7 @@ function buildChariot(faction: Faction): THREE.Object3D {
   const p = palette(faction);
   const root = new THREE.Group();
   root.name = "xq_chariot";
-  root.add(lacquerDisc(faction, "r", 0.36));
+  root.add(buildXiangqiDisc(faction, "r", 0.36));
 
   const wood = std(p.wood, 0.7, 0.06, 0.55);
   const trim = bronze(p.trim);
@@ -612,7 +612,7 @@ function buildCannon(faction: Faction): THREE.Object3D {
   const p = palette(faction);
   const root = new THREE.Group();
   root.name = "xq_cannon";
-  root.add(lacquerDisc(faction, "c", 0.34));
+  root.add(buildXiangqiDisc(faction, "c", 0.34));
 
   const iron = std(0x3a3e44, 0.35, 0.9, 1.2, 0x101418, 0.1);
   const trim = bronze(p.trim);
@@ -643,7 +643,7 @@ function buildCannon(faction: Faction): THREE.Object3D {
 function buildSoldier(faction: Faction): THREE.Object3D {
   const root = new THREE.Group();
   root.name = "xq_soldier";
-  root.add(lacquerDisc(faction, "p", 0.3));
+  root.add(buildXiangqiDisc(faction, "p", 0.3));
   const fig = buildHanSoldier({
     faction,
     rank: "infantry",
