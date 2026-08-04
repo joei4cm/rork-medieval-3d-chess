@@ -3,8 +3,12 @@ import path from "path";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+// GitHub Pages project site needs a subpath base; local / Rork stay at "/".
+const pagesBase = process.env.GITHUB_PAGES === "true" ? "/rork-medieval-3d-chess/" : "/";
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
+  base: pagesBase,
   server: {
     host: "::",
     port: 8080,
