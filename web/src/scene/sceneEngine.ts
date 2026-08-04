@@ -1,14 +1,15 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
-import type { GameController } from "../core/gameController";
-import type { Faction, GameSnapshot, MoveEvent, PieceKind, SquareId } from "../core/types";
+import type { GameSession } from "../core/session";
+import type { Faction, GameSnapshot, GameVariant, MoveEvent, PieceKind, SquareId } from "../core/types";
 import { audio, type FootstepTimbre } from "../audio/audioManager";
 import type { ArenaTheme } from "./arena";
 import { ARENA_LOOKS, DEFAULT_ARENA } from "./arena";
 import { Battlefield } from "./battlefield";
 import { JungleOverlay } from "./jungle";
-import { BOARD_TOP, BoardView, type HighlightKind, TILE, squareToWorld, worldToSquare } from "./board";
+import { BOARD_TOP, BoardView, type HighlightKind, TILE, setBoardVariant, squareToWorld, worldToSquare } from "./board";
+import { XiangqiBoardView } from "./xiangqiBoard";
 import { CastleHall, buildEnvironmentMap } from "./environment";
 import { describeGpu, probeGpu, reflectionProbeWorks, type GpuReport } from "./diagnostics";
 import { EffectsSystem, ShakeSystem } from "./effects";
@@ -18,6 +19,8 @@ import { QUALITY_SETTINGS, type QualityPreset } from "./quality";
 import { SPELL_LOOK, SpellLightPool, SpellOrb } from "./spells";
 import { disposeStrikeAssets, spawnGroundWave, spawnPillar, spawnSlash } from "./strikes";
 import { Ease, type Easing, TweenManager, wait } from "./tween";
+
+type BoardSurface = BoardView | XiangqiBoardView;
 
 export type CameraPreset = "white" | "black" | "top" | "cinematic";
 
@@ -104,6 +107,8 @@ const CRY_WEIGHT: Record<PieceKind, { volume: number; rate: number }> = {
   b: { volume: 0.92, rate: 1 },
   n: { volume: 0.95, rate: 1.01 },
   p: { volume: 0.85, rate: 1.05 },
+  a: { volume: 0.92, rate: 1 },
+  c: { volume: 1.05, rate: 0.98 },
 };
 
 /**
@@ -126,6 +131,8 @@ const WOOD_WEIGHT: Record<PieceKind, number> = {
   b: 0.52,
   n: 0.58,
   p: 0.3,
+  a: 0.52,
+  c: 0.88,
 };
 
 /** How one rank crosses the board on its own legs. */
@@ -152,15 +159,14 @@ const GAITS: Record<PieceKind, Gait> = {
   b: { stepsPerTile: 1.9, cadence: 2.45, timbre: "leather", volume: 0.78 },
   n: { stepsPerTile: 2, cadence: 2.9, timbre: "plate", volume: 0.95 },
   p: { stepsPerTile: 2, cadence: 2.7, timbre: "scuff", volume: 0.72 },
+  a: { stepsPerTile: 1.9, cadence: 2.45, timbre: "leather", volume: 0.78 },
+  c: { stepsPerTile: 1.7, cadence: 2.1, timbre: "regal", volume: 0.88 },
 };
 
 /**
- * The two ranks that never touch what they kill: the sorceress queen and the
- * staff-bearing mage. Both open the fight from where they stand, throwing a
- * ball of fire down the line, and only walk onto the square once the body on it
- * has burned away.
+ * The ranks that never touch what they kill: queen, mage, and Xiangqi cannon.
  */
-const RANGED_KINDS: PieceKind[] = ["q", "b"];
+const RANGED_KINDS: PieceKind[] = ["q", "b", "c"];
 
 /**
  * How one rank's blow is staged. The shape of a hand-to-hand kill never changes
@@ -291,6 +297,36 @@ const STRIKES: Record<PieceKind, StrikeProfile> = {
     aftershock: 0.34,
     hold: 0.13,
   },
+  // Xiangqi advisor — palace guard, mage-like bearing.
+  a: {
+    zoom: 6,
+    charge: 1.4,
+    wind: 0.12,
+    power: 1.15,
+    swing: 0.45,
+    heft: 0.15,
+    slash: { size: 1.2, color: 0xd8e6ff },
+    wave: null,
+    pillar: null,
+    wake: false,
+    aftershock: 0,
+    hold: 0.03,
+  },
+  // Xiangqi cannon — fires over a screen; ranged profile matches the sorceress.
+  c: {
+    zoom: 8,
+    charge: 1.3,
+    wind: 0.16,
+    power: 1.6,
+    swing: 0.6,
+    heft: 0.35,
+    slash: { size: 1.5, color: 0xffe0b0 },
+    wave: null,
+    pillar: null,
+    wake: false,
+    aftershock: 0.14,
+    hold: 0.06,
+  },
 };
 
 /** How much fire a caster throws, and what it does when it lands. */
@@ -319,8 +355,13 @@ const MAGE_SPELL: SpellProfile = { zoom: 4.5, gather: 0, orb: 0.42, bolts: 1, bl
  */
 const QUEEN_SPELL: SpellProfile = { zoom: 7.5, gather: 0.28, orb: 0.66, bolts: 3, blast: 1.75, ring: 3.4 };
 
+/** Xiangqi cannon: one heavy bolt that leaps the screen piece. */
+const CANNON_SPELL: SpellProfile = { zoom: 7.2, gather: 0.22, orb: 0.72, bolts: 1, blast: 1.9, ring: 2.6 };
+
 function spellProfile(kind: PieceKind): SpellProfile {
-  return kind === "q" ? QUEEN_SPELL : MAGE_SPELL;
+  if (kind === "q") return QUEEN_SPELL;
+  if (kind === "c") return CANNON_SPELL;
+  return MAGE_SPELL;
 }
 
 /**
@@ -358,7 +399,8 @@ export class SceneEngine {
   private battlefield: Battlefield;
   /** Rainforest dressing — only staged by the Sun Temple map. */
   private jungle: JungleOverlay;
-  private board = new BoardView();
+  private board: BoardSurface = new BoardView();
+  private variant: GameVariant = "chess";
   private effects = new EffectsSystem();
   /**
    * The only point lights sorcery is ever allowed to use. They are added to the
@@ -485,7 +527,7 @@ export class SceneEngine {
 
   constructor(
     private canvas: HTMLCanvasElement,
-    private controller: GameController,
+    private controller: GameSession,
     private callbacks: SceneCallbacks,
     preset: QualityPreset,
     arena: ArenaTheme = DEFAULT_ARENA,
@@ -567,12 +609,55 @@ export class SceneEngine {
 
     this.bindEvents();
     this.factory.onClip((keys, name, clip) => this.adoptClip(keys, name, clip));
-    this.controller.setAnimator((event) => this.animateMove(event));
-    this.controller.on("state", (snapshot) => this.onState(snapshot));
-    this.controller.on("reset", () => this.rebuildPieces());
-    this.controller.on("illegal", ({ from }) => this.rejectMove(from));
-    this.controller.on("gameover", () => void this.playEndCinematic());
+    this.bindController(controller);
     this.handleResize();
+  }
+
+  private controllerUnsubs: Array<() => void> = [];
+
+  /** Swap the live ruleset controller (chess ↔ xiangqi) without recreating WebGL. */
+  bindController(controller: GameSession): void {
+    this.controller.setAnimator(null);
+    for (const unsub of this.controllerUnsubs) unsub();
+    this.controllerUnsubs = [];
+    this.controller = controller;
+    this.controller.setAnimator((event) => this.animateMove(event));
+    this.controllerUnsubs.push(
+      this.controller.on("state", this.onStateBound),
+      this.controller.on("reset", this.onResetBound),
+      this.controller.on("illegal", this.onIllegalBound),
+      this.controller.on("gameover", this.onGameOverBound),
+    );
+  }
+
+  private onStateBound = (snapshot: GameSnapshot): void => this.onState(snapshot);
+  private onResetBound = (): void => this.rebuildPieces();
+  private onIllegalBound = ({ from }: { from: SquareId }): void => {
+    void this.rejectMove(from);
+  };
+  private onGameOverBound = (): void => {
+    void this.playEndCinematic();
+  };
+
+  /** Rebuild the playing surface for chess or Xiangqi. */
+  setVariant(variant: GameVariant): void {
+    if (this.variant === variant) return;
+    this.variant = variant;
+    setBoardVariant(variant);
+    this.clearSelection();
+    this.scene.remove(this.board.group);
+    this.board.dispose();
+    this.board = variant === "xiangqi" ? new XiangqiBoardView() : new BoardView();
+    this.scene.add(this.board.group);
+    const look = ARENA_LOOKS[this.arena];
+    this.board.applyArena(look);
+    this.controls.minDistance = variant === "xiangqi" ? 5.2 : 4.5;
+    this.controls.maxDistance = variant === "xiangqi" ? 20 : 17;
+    this.rebuildPieces();
+  }
+
+  getVariant(): GameVariant {
+    return this.variant;
   }
 
   // ---------------------------------------------------------------- lifecycle
@@ -594,8 +679,11 @@ export class SceneEngine {
    */
   private adoptClip(keys: TemplateKey[], name: ClipName, clip: THREE.AnimationClip): void {
     const wanted = new Set<TemplateKey>(keys);
+    const sculptOf = (kind: PieceKind): PieceKind => (kind === "a" ? "b" : kind === "c" ? "q" : kind);
     const install = (piece: PieceView): void => {
-      if (wanted.has(`${piece.color}${piece.kind}`)) piece.installClip(name, clip);
+      if (wanted.has(`${piece.color}${sculptOf(piece.kind)}`) || wanted.has(`${piece.color}${piece.kind}`)) {
+        piece.installClip(name, clip);
+      }
     };
     for (const piece of this.pieces.values()) install(piece);
     for (const piece of this.motion) install(piece);

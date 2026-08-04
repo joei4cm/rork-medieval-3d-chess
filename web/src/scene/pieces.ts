@@ -22,6 +22,8 @@ export const PIECE_HEIGHT: Record<PieceKind, number> = {
   r: 0.84,
   q: 1.0,
   k: 1.12,
+  a: 0.88,
+  c: 1.0,
 };
 
 export const FACTION_ACCENT: Record<Faction, number> = {
@@ -1458,8 +1460,9 @@ export class PieceFactory {
   }
 
   create(kind: PieceKind, color: Faction, options: PieceVisualOptions): PieceView {
-    const template = this.templates.get(`${color}${kind}`);
-    if (!template) throw new Error(`piece template "${color}${kind}" not loaded`);
+    const sculpt = kind === "a" ? "b" : kind === "c" ? "q" : kind;
+    const template = this.templates.get(`${color}${sculpt}`);
+    if (!template) throw new Error(`piece template "${color}${sculpt}" not loaded`);
 
     // Skinned meshes must never share a skeleton between instances.
     const model = template.skinned ? SkeletonUtils.clone(template.scene) : template.scene.clone(true);

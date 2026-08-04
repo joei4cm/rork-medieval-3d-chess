@@ -49,6 +49,8 @@ export const BADGE_SCALE: Record<PieceKind, number> = {
   r: 0.36,
   q: 0.42,
   k: 0.44,
+  a: 0.36,
+  c: 0.42,
 };
 
 /** Height above the figure's crown where its badge floats. */
@@ -243,6 +245,8 @@ const GLYPHS: Record<PieceKind, (ctx: CanvasRenderingContext2D) => void> = {
   b: bishopGlyph,
   q: (ctx) => crownGlyph(ctx, false),
   k: (ctx) => crownGlyph(ctx, true),
+  a: bishopGlyph,
+  c: (ctx) => crownGlyph(ctx, false),
 };
 
 // ------------------------------------------------------------ tactical tokens
@@ -255,6 +259,8 @@ export const TOKEN_SCALE: Record<PieceKind, number> = {
   r: 0.74,
   q: 0.84,
   k: 0.9,
+  a: 0.72,
+  c: 0.84,
 };
 
 interface TokenTheme {

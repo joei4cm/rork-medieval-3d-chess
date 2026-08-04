@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Clapperboard, Crown, Swords, Settings as SettingsIcon, Users } from "lucide-react";
 
-import type { DemoOptions, Difficulty, Faction } from "../core/types";
+import type { DemoOptions, Difficulty, Faction, GameVariant } from "../core/types";
+import { useI18n } from "../i18n/I18nProvider";
 import { Crest } from "./Heraldry";
 
 export interface MatchConfig {
+  variant: GameVariant;
   mode: "ai" | "hotseat" | "demo";
   difficulty: Difficulty;
   playerColor: Faction;
@@ -13,17 +15,13 @@ export interface MatchConfig {
 }
 
 interface MainMenuProps {
+  variant: GameVariant;
+  onVariantChange: (variant: GameVariant) => void;
   onStart: (config: MatchConfig) => void;
   onOpenSettings: () => void;
   attract: boolean;
   onInteract: () => void;
 }
-
-const DIFFICULTY_COPY: Record<Difficulty, string> = {
-  easy: "Squire — plays fast and loose",
-  medium: "Knight — thinks three moves deep",
-  hard: "Warlord — full search, no mercy",
-};
 
 const DEMO_SPEEDS: { label: string; value: number }[] = [
   { label: "0.5×", value: 0.5 },
@@ -32,14 +30,15 @@ const DEMO_SPEEDS: { label: string; value: number }[] = [
   { label: "4×", value: 4 },
 ];
 
-const CLOCKS: { label: string; value: number | null }[] = [
-  { label: "None", value: null },
-  { label: "5 min", value: 5 },
-  { label: "10 min", value: 10 },
-  { label: "15 min", value: 15 },
-];
-
-export function MainMenu({ onStart, onOpenSettings, attract, onInteract }: MainMenuProps) {
+export function MainMenu({
+  variant,
+  onVariantChange,
+  onStart,
+  onOpenSettings,
+  attract,
+  onInteract,
+}: MainMenuProps) {
+  const { t, locale, setLocale } = useI18n();
   const [tab, setTab] = useState<"ai" | "hotseat" | "demo">("ai");
   const [difficulty, setDifficulty] = useState<Difficulty>("medium");
   const [playerColor, setPlayerColor] = useState<Faction>("w");
@@ -51,6 +50,7 @@ export function MainMenu({ onStart, onOpenSettings, attract, onInteract }: MainM
 
   const start = (): void =>
     onStart({
+      variant,
       mode: tab,
       difficulty,
       playerColor,
@@ -58,21 +58,75 @@ export function MainMenu({ onStart, onOpenSettings, attract, onInteract }: MainM
       demo: tab === "demo" ? { white: demoWhite, black: demoBlack, speed: demoSpeed, autoRematch: demoLoop } : undefined,
     });
 
+  const brand = variant === "xiangqi" ? t.brand.xiangqi : t.brand.chess;
+  const tag = attract
+    ? variant === "xiangqi"
+      ? t.menu.attractXiangqi
+      : t.menu.attractChess
+    : variant === "xiangqi"
+      ? t.brand.xiangqiTag
+      : t.brand.chessTag;
+
+  const clocks = [
+    { label: t.menu.none, value: null as number | null },
+    { label: t.menu.minutes(5), value: 5 },
+    { label: t.menu.minutes(10), value: 10 },
+    { label: t.menu.minutes(15), value: 15 },
+  ];
+
   return (
     <div
       className="mc-menu pointer-events-auto absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-5 py-6"
       onPointerDown={onInteract}
       onPointerMove={onInteract}
     >
-      <div className="mc-unfurl mc-menu-hero mb-6 shrink-0 text-center">
-        <p className="mc-display text-[0.68rem] tracking-[0.55em] text-[#c8ab74]">Anno Domini MCDXCII</p>
-        <h1 className="mc-display mc-title-glow mt-2 text-5xl font-bold text-[#f4e3bd] sm:text-6xl">
-          KING&apos;S GAMBIT
+      <div className="absolute right-4 top-4 z-10 flex gap-1">
+        <button
+          type="button"
+          className="mc-chip px-3 py-1.5 text-[0.7rem]"
+          data-active={locale === "en"}
+          onClick={() => setLocale("en")}
+        >
+          EN
+        </button>
+        <button
+          type="button"
+          className="mc-chip px-3 py-1.5 text-[0.7rem]"
+          data-active={locale === "zh"}
+          onClick={() => setLocale("zh")}
+        >
+          中文
+        </button>
+      </div>
+
+      <div className="mc-unfurl mc-menu-hero mb-5 shrink-0 text-center">
+        <p className="mc-display text-[0.68rem] tracking-[0.55em] text-[#c8ab74]">{t.brand.pickGame}</p>
+        <h1 className="mc-display mc-title-glow mt-2 text-4xl font-bold text-[#f4e3bd] sm:text-5xl md:text-6xl">
+          {brand}
         </h1>
         <div className="mc-rule mx-auto mt-3 w-64" />
-        <p className="mt-3 text-sm italic text-[#c5b28d]">
-          {attract ? "A showcase duel is under way — move to take the hall" : "Chess in the great hall of Aldermoor"}
-        </p>
+        <p className="mt-3 text-sm italic text-[#c5b28d]">{tag}</p>
+      </div>
+
+      <div className="mb-4 grid w-full max-w-md shrink-0 grid-cols-2 gap-2">
+        <button
+          type="button"
+          className="mc-chip flex flex-col items-center gap-1 px-2 py-3"
+          data-active={variant === "chess"}
+          onClick={() => onVariantChange("chess")}
+        >
+          <span className="mc-display text-[0.72rem] tracking-[0.2em]">{t.brand.chess}</span>
+          <span className="text-[0.65rem] text-[#9c8b6c]">Chess</span>
+        </button>
+        <button
+          type="button"
+          className="mc-chip flex flex-col items-center gap-1 px-2 py-3"
+          data-active={variant === "xiangqi"}
+          onClick={() => onVariantChange("xiangqi")}
+        >
+          <span className="mc-display text-[0.72rem] tracking-[0.2em]">{t.brand.xiangqi}</span>
+          <span className="text-[0.65rem] text-[#9c8b6c]">Xiangqi</span>
+        </button>
       </div>
 
       <div className="mc-slate mc-goldleaf mc-rise flex w-full min-h-0 max-w-md flex-col p-5 sm:p-6">
@@ -83,7 +137,7 @@ export function MainMenu({ onStart, onOpenSettings, attract, onInteract }: MainM
             data-active={tab === "ai"}
             onClick={() => setTab("ai")}
           >
-            <Swords size={14} /> Computer
+            <Swords size={14} /> {t.menu.computer}
           </button>
           <button
             type="button"
@@ -91,7 +145,7 @@ export function MainMenu({ onStart, onOpenSettings, attract, onInteract }: MainM
             data-active={tab === "hotseat"}
             onClick={() => setTab("hotseat")}
           >
-            <Users size={14} /> 2 Players
+            <Users size={14} /> {t.menu.twoPlayers}
           </button>
           <button
             type="button"
@@ -99,174 +153,173 @@ export function MainMenu({ onStart, onOpenSettings, attract, onInteract }: MainM
             data-active={tab === "demo"}
             onClick={() => setTab("demo")}
           >
-            <Clapperboard size={14} /> Showcase
+            <Clapperboard size={14} /> {t.menu.showcase}
           </button>
         </div>
 
         <div className="mc-scroll -mr-2 min-h-0 flex-auto overflow-y-auto pr-2">
-        {tab === "ai" ? (
-          <div className="mc-fade space-y-5">
-            <div>
-              <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">Opponent</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(["easy", "medium", "hard"] as Difficulty[]).map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className="mc-chip py-2.5"
-                    data-active={difficulty === level}
-                    onClick={() => setDifficulty(level)}
-                  >
-                    {level}
-                  </button>
-                ))}
+          {tab === "ai" ? (
+            <div className="mc-fade space-y-5">
+              <div>
+                <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">{t.menu.opponent}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["easy", "medium", "hard"] as Difficulty[]).map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      className="mc-chip py-2.5"
+                      data-active={difficulty === level}
+                      onClick={() => setDifficulty(level)}
+                    >
+                      {t.menu.difficulty[level]}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs italic text-[#9c8b6c]">{t.menu.difficultyHint[difficulty]}</p>
               </div>
-              <p className="mt-2 text-xs italic text-[#9c8b6c]">{DIFFICULTY_COPY[difficulty]}</p>
-            </div>
 
-            <div>
-              <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">Your banner</p>
-              <div className="grid grid-cols-2 gap-2">
-                {(["w", "b"] as Faction[]).map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    className="mc-chip flex items-center justify-center gap-2 py-2.5"
-                    data-active={playerColor === color}
-                    onClick={() => setPlayerColor(color)}
-                  >
-                    <Crest faction={color} size={18} active={playerColor === color} />
-                    {color === "w" ? "Ivory" : "Obsidian"}
-                  </button>
-                ))}
+              <div>
+                <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">{t.menu.yourBanner}</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {(["w", "b"] as Faction[]).map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      className="mc-chip flex items-center justify-center gap-2 py-2.5"
+                      data-active={playerColor === color}
+                      onClick={() => setPlayerColor(color)}
+                    >
+                      <Crest faction={color} size={18} active={playerColor === color} />
+                      {color === "w"
+                        ? variant === "xiangqi"
+                          ? t.menu.red
+                          : t.menu.ivory
+                        : variant === "xiangqi"
+                          ? t.menu.black
+                          : t.menu.obsidian}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        ) : tab === "hotseat" ? (
-          <p className="mc-fade text-sm italic leading-relaxed text-[#b7a88a]">
-            Two commanders, one board. The camera swings to the player on move — you can disable that in settings.
-          </p>
-        ) : (
-          <div className="mc-fade space-y-5">
-            <p className="text-sm italic leading-relaxed text-[#b7a88a]">
-              Two engines duel on their own while the camera drifts around the hall — made for capturing footage. Press{" "}
-              <span className="mc-display text-[#e2c98f]">C</span> in the match to hide the whole interface.
+          ) : tab === "hotseat" ? (
+            <p className="mc-fade text-sm italic leading-relaxed text-[#b7a88a]">
+              {variant === "xiangqi" ? t.menu.hotseatXiangqi : t.menu.hotseatChess}
             </p>
+          ) : (
+            <div className="mc-fade space-y-5">
+              <p className="text-sm italic leading-relaxed text-[#b7a88a]">{t.menu.showcaseHint}</p>
 
-            <div>
-              <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">Ivory engine</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(["easy", "medium", "hard"] as Difficulty[]).map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className="mc-chip py-2.5"
-                    data-active={demoWhite === level}
-                    onClick={() => setDemoWhite(level)}
-                  >
-                    {level}
-                  </button>
-                ))}
+              <div>
+                <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">{t.menu.whiteEngine}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["easy", "medium", "hard"] as Difficulty[]).map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      className="mc-chip py-2.5"
+                      data-active={demoWhite === level}
+                      onClick={() => setDemoWhite(level)}
+                    >
+                      {t.menu.difficulty[level]}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div>
-              <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">Obsidian engine</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(["easy", "medium", "hard"] as Difficulty[]).map((level) => (
-                  <button
-                    key={level}
-                    type="button"
-                    className="mc-chip py-2.5"
-                    data-active={demoBlack === level}
-                    onClick={() => setDemoBlack(level)}
-                  >
-                    {level}
-                  </button>
-                ))}
+              <div>
+                <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">{t.menu.blackEngine}</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {(["easy", "medium", "hard"] as Difficulty[]).map((level) => (
+                    <button
+                      key={level}
+                      type="button"
+                      className="mc-chip py-2.5"
+                      data-active={demoBlack === level}
+                      onClick={() => setDemoBlack(level)}
+                    >
+                      {t.menu.difficulty[level]}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div>
-              <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">Pace</p>
+              <div>
+                <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">{t.menu.pace}</p>
+                <div className="grid grid-cols-4 gap-2">
+                  {DEMO_SPEEDS.map((option) => (
+                    <button
+                      key={option.label}
+                      type="button"
+                      className="mc-chip py-2.5"
+                      data-active={demoSpeed === option.value}
+                      onClick={() => setDemoSpeed(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="mc-chip flex w-full items-center justify-between px-3 py-2.5"
+                data-active={demoLoop}
+                onClick={() => setDemoLoop((loop) => !loop)}
+                aria-pressed={demoLoop}
+              >
+                <span>{t.menu.autoRematch}</span>
+                <span className="mc-display text-[0.62rem] tracking-[0.24em]">{demoLoop ? "ON" : "OFF"}</span>
+              </button>
+            </div>
+          )}
+
+          {tab === "demo" ? null : (
+            <div className="mt-5">
+              <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">{t.menu.clock}</p>
               <div className="grid grid-cols-4 gap-2">
-                {DEMO_SPEEDS.map((option) => (
+                {clocks.map((option) => (
                   <button
                     key={option.label}
                     type="button"
                     className="mc-chip py-2.5"
-                    data-active={demoSpeed === option.value}
-                    onClick={() => setDemoSpeed(option.value)}
+                    data-active={clock === option.value}
+                    onClick={() => setClock(option.value)}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
             </div>
-
-            <button
-              type="button"
-              className="mc-chip flex w-full items-center justify-between px-3 py-2.5"
-              data-active={demoLoop}
-              onClick={() => setDemoLoop((loop) => !loop)}
-              aria-pressed={demoLoop}
-            >
-              <span>Loop new duels</span>
-              <span className="mc-display text-[0.62rem] tracking-[0.24em]">{demoLoop ? "ON" : "OFF"}</span>
-            </button>
-          </div>
-        )}
-
-        {tab === "demo" ? null : (
-          <div className="mt-5">
-            <p className="mc-display mb-2 text-[0.62rem] tracking-[0.3em] text-[#a89268]">Hourglass</p>
-            <div className="grid grid-cols-4 gap-2">
-              {CLOCKS.map((option) => (
-                <button
-                  key={option.label}
-                  type="button"
-                  className="mc-chip py-2.5"
-                  data-active={clock === option.value}
-                  onClick={() => setClock(option.value)}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+          )}
         </div>
 
         <div className="mc-panel-foot shrink-0">
-        <button
-          type="button"
-          className="mc-btn mc-btn-primary mt-5 flex w-full items-center justify-center gap-2 py-3.5 text-sm"
-          onClick={start}
-        >
-          {tab === "demo" ? (
-            <>
-              <Clapperboard size={16} /> Roll the showcase
-            </>
-          ) : (
-            <>
-              <Crown size={16} /> Take the field
-            </>
-          )}
-        </button>
+          <button
+            type="button"
+            className="mc-btn mc-btn-primary mt-5 flex w-full items-center justify-center gap-2 py-3.5 text-sm"
+            onClick={start}
+          >
+            {tab === "demo" ? (
+              <>
+                <Clapperboard size={16} /> {t.menu.beginShowcase}
+              </>
+            ) : (
+              <>
+                <Crown size={16} /> {t.menu.beginDuel}
+              </>
+            )}
+          </button>
 
-        <button
-          type="button"
-          className="mc-btn mt-2 flex w-full items-center justify-center gap-2"
-          onClick={onOpenSettings}
-        >
-          <SettingsIcon size={15} /> Settings
-        </button>
+          <button
+            type="button"
+            className="mc-btn mt-2 flex w-full items-center justify-center gap-2"
+            onClick={onOpenSettings}
+          >
+            <SettingsIcon size={15} /> {t.menu.settings}
+          </button>
         </div>
       </div>
-
-      <p className="mc-menu-hint mt-5 shrink-0 text-[0.68rem] tracking-[0.2em] text-[#7d6f57]">
-        DRAG TO ORBIT · SCROLL TO ZOOM · CLICK A FIGURE TO COMMAND IT
-      </p>
     </div>
   );
 }

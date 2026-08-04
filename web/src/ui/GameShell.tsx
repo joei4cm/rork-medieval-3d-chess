@@ -2,11 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 
 import { audio } from "../audio/audioManager";
 import { GameController } from "../core/gameController";
-import type { LedgerMove } from "../core/types";
+import type { GameSession } from "../core/session";
+import type { GameVariant, LedgerMove } from "../core/types";
+import { useI18n } from "../i18n/I18nProvider";
 import { Clapperboard } from "lucide-react";
 import { ARENA_LOOKS, DEFAULT_ARENA, type ArenaTheme } from "../scene/arena";
 import { detectQualityPreset, type QualityPreset } from "../scene/quality";
 import { SceneEngine, type CameraPreset, type ShowcaseCamera } from "../scene/sceneEngine";
+import { XiangqiGameController } from "../xiangqi/gameController";
 import { GameOverModal } from "./GameOverModal";
 import { Hud } from "./Hud";
 import { MainMenu, type MatchConfig } from "./MainMenu";
@@ -18,10 +21,21 @@ type Phase = "loading" | "menu" | "playing";
 
 const ATTRACT_DELAY_MS = 30_000;
 const RENDER_PREFS_KEY = "kg.render";
+const VARIANT_KEY = "kg.variant";
 
 interface RenderPrefs {
   safeMode: boolean;
   brightness: number;
+}
+
+function loadVariant(): GameVariant {
+  try {
+    const raw = window.localStorage.getItem(VARIANT_KEY);
+    if (raw === "xiangqi" || raw === "chess") return raw;
+  } catch {
+    // ignore
+  }
+  return "chess";
 }
 
 /**
@@ -53,12 +67,20 @@ function saveRenderPrefs(prefs: RenderPrefs): void {
   }
 }
 
+function createController(variant: GameVariant): GameSession {
+  return variant === "xiangqi" ? new XiangqiGameController() : new GameController();
+}
+
 export function GameShell() {
+  const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<SceneEngine | null>(null);
   const attractTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const controller = useMemo(() => new GameController(), []);
+  const [variant, setVariantState] = useState<GameVariant>(() =>
+    typeof window === "undefined" ? "chess" : loadVariant(),
+  );
+  const [controller, setController] = useState<GameSession>(() => createController(variant));
   const snapshot = useGameSnapshot(controller);
 
   const detected = useMemo<QualityPreset>(() => detectQualityPreset(), []);
@@ -118,7 +140,7 @@ export function GameShell() {
           onPromotionOpen: (open) => setPromotionOpen(open),
           onQualityAdjusted: (preset) => {
             setSettings((current) => ({ ...current, quality: preset }));
-            setNotice(`Graphics stepped down to ${preset} to hold a smooth frame rate.`);
+            setNotice(t.graphicsStepDown(preset));
             setTimeout(() => setNotice(null), 5000);
           },
           onFps: (value) => setFps(value),
@@ -141,6 +163,7 @@ export function GameShell() {
     }
 
     engineRef.current = engine;
+    engine.setVariant(variant);
     engine.setInteractive(false);
     engine.setSafeMode(initialRender.safeMode);
     engine.setBrightness(initialRender.brightness);
@@ -157,9 +180,29 @@ export function GameShell() {
       engineRef.current = null;
       engine.dispose();
     };
-  }, [controller, detected, initialRender]);
+    // Boot once — controller swaps go through bindController.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detected, initialRender]);
+
+  useEffect(() => {
+    engineRef.current?.bindController(controller);
+  }, [controller]);
 
   useEffect(() => () => controller.dispose(), [controller]);
+
+  const setVariant = useCallback((next: GameVariant) => {
+    setVariantState((current) => {
+      if (current === next) return current;
+      try {
+        window.localStorage.setItem(VARIANT_KEY, next);
+      } catch {
+        // ignore
+      }
+      setController(createController(next));
+      engineRef.current?.setVariant(next);
+      return next;
+    });
+  }, []);
 
   // ----------------------------------------------------- audio unlock on input
   useEffect(() => {
@@ -308,12 +351,13 @@ export function GameShell() {
   const handleRematch = useCallback(() => {
     const current = controller.getSnapshot();
     startMatch({
+      variant: current.variant ?? variant,
       mode: current.mode === "hotseat" ? "hotseat" : "ai",
       difficulty: current.difficulty,
       playerColor: current.playerColor,
       clockMinutes: current.clock.enabled ? current.clock.initialMs / 60_000 : null,
     });
-  }, [controller, startMatch]);
+  }, [controller, startMatch, variant]);
 
   const handleFullscreen = useCallback(() => {
     const element = document.documentElement;
@@ -382,7 +426,7 @@ export function GameShell() {
 
       {/* Overlay layer */}
       <div className="pointer-events-none absolute inset-0">
-        {phase === "loading" && !unsupported ? <LoadingScreen progress={progress} /> : null}
+        {phase === "loading" && !unsupported ? <LoadingScreen progress={progress} label={t.loading} /> : null}
 
         {unsupported ? (
           <div className="pointer-events-auto absolute inset-0 z-40 flex items-center justify-center px-6 text-center">
@@ -398,6 +442,8 @@ export function GameShell() {
 
         {phase === "menu" && !introPlaying ? (
           <MainMenu
+            variant={variant}
+            onVariantChange={setVariant}
             onStart={startMatch}
             onOpenSettings={() => setShowSettings(true)}
             attract={attract}
@@ -481,6 +527,7 @@ export function GameShell() {
             pgn={snapshot.pgn}
             playerColor={snapshot.playerColor}
             versusComputer={snapshot.mode === "ai"}
+            variant={snapshot.variant ?? variant}
             onRematch={handleRematch}
             onMenu={returnToMenu}
           />
@@ -510,10 +557,10 @@ export function GameShell() {
   );
 }
 
-function LoadingScreen({ progress }: { progress: number }) {
+function LoadingScreen({ progress, label }: { progress: number; label: string }) {
   return (
     <div className="mc-fade absolute inset-0 flex flex-col items-center justify-center gap-5 bg-[#05060a]/85 px-6">
-      <p className="mc-display text-[0.62rem] tracking-[0.5em] text-[#a89268]">MUSTERING THE ARMIES</p>
+      <p className="mc-display text-[0.62rem] tracking-[0.5em] text-[#a89268]">{label}</p>
       <h1 className="mc-display mc-title-glow text-4xl text-[#f4e3bd]">KING&apos;S GAMBIT</h1>
       <div className="h-[3px] w-64 overflow-hidden rounded-full bg-[#2a251c]">
         <div

@@ -68,8 +68,22 @@ const GLYPHS: Record<PieceKind, string> = {
   b: "♝",
   n: "♞",
   p: "♟",
+  a: "士",
+  c: "砲",
 };
 
-export function pieceGlyph(kind: PieceKind): string {
+export function pieceGlyph(kind: PieceKind, variant: "chess" | "xiangqi" = "chess"): string {
+  if (variant === "xiangqi") {
+    const x: Record<string, string> = {
+      k: "将",
+      a: "士",
+      b: "象",
+      n: "马",
+      r: "车",
+      c: "炮",
+      p: "兵",
+    };
+    return x[kind] ?? GLYPHS[kind];
+  }
   return GLYPHS[kind];
 }

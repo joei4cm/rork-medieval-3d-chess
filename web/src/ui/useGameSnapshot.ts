@@ -1,10 +1,10 @@
 import { useSyncExternalStore } from "react";
 
-import type { GameController } from "../core/gameController";
+import type { GameSession } from "../core/session";
 import type { GameSnapshot } from "../core/types";
 
-/** Subscribes React to the chess core without duplicating any state. */
-export function useGameSnapshot(controller: GameController): GameSnapshot {
+/** Subscribes React to the game core without duplicating any state. */
+export function useGameSnapshot(controller: GameSession): GameSnapshot {
   return useSyncExternalStore(
     (listener) => controller.on("state", listener),
     () => controller.getSnapshot(),

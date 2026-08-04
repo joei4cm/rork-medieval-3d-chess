@@ -1,11 +1,12 @@
 /**
  * Shared, render-agnostic game types.
- * The chess core never imports anything from `src/scene` — the scene subscribes to it.
+ * The chess/xiangqi core never imports anything from `src/scene` — the scene subscribes to it.
  */
 
 export type Faction = "w" | "b";
 
-export type PieceKind = "p" | "n" | "b" | "r" | "q" | "k";
+/** Chess kinds plus Xiangqi advisor (a) and cannon (c). Elephant reuses `b`. */
+export type PieceKind = "p" | "n" | "b" | "r" | "q" | "k" | "a" | "c";
 
 export type SquareId = string;
 
@@ -13,11 +14,13 @@ export type Difficulty = "easy" | "medium" | "hard";
 
 export type GameMode = "ai" | "hotseat" | "attract" | "demo";
 
+export type GameVariant = "chess" | "xiangqi";
+
 /** Computer-vs-computer showcase settings (used for recording demos). */
 export interface DemoOptions {
-  /** Engine strength for the ivory army. */
+  /** Engine strength for the ivory / red army. */
   white: Difficulty;
-  /** Engine strength for the obsidian army. */
+  /** Engine strength for the obsidian / black army. */
   black: Difficulty;
   /** Pacing multiplier for the pause between moves (1 = normal, 2 = twice as fast). */
   speed: number;
@@ -35,7 +38,8 @@ export type EndReason =
   | "threefold"
   | "insufficient"
   | "fiftymove"
-  | "draw";
+  | "draw"
+  | "perpetual";
 
 export interface GameResult {
   /** Winner, or null for a draw. */
@@ -98,7 +102,7 @@ export interface GameSnapshot {
   /** Full move ledger in standard notation, oldest first. */
   moves: LedgerMove[];
   captured: CapturedPiece[];
-  /** Positive = white is ahead by that many pawns. */
+  /** Positive = white/red is ahead by that many pawns. */
   materialDiff: number;
   lastMove: { from: SquareId; to: SquareId } | null;
   clock: ClockState;
@@ -109,6 +113,8 @@ export interface GameSnapshot {
   paused: boolean;
   /** 1-based showcase game counter (auto-rematch increments it). */
   demoRound: number;
+  /** Which ruleset is live. */
+  variant: GameVariant;
 }
 
 /** Everything the renderer needs to animate one played move. */
@@ -125,6 +131,8 @@ export interface MoveEvent {
   promotion: PieceKind | null;
   isCheck: boolean;
   isGameOver: boolean;
+  /** Xiangqi cannon capture fires over a screen piece. */
+  cannonScreen: SquareId | null;
 }
 
 export type Animator = (event: MoveEvent) => Promise<void>;
@@ -136,6 +144,8 @@ export const PIECE_VALUE: Record<PieceKind, number> = {
   r: 5,
   q: 9,
   k: 0,
+  a: 2,
+  c: 4.5,
 };
 
 export const PIECE_LABEL: Record<PieceKind, string> = {
@@ -145,4 +155,17 @@ export const PIECE_LABEL: Record<PieceKind, string> = {
   r: "Rook",
   q: "Queen",
   k: "King",
+  a: "Advisor",
+  c: "Cannon",
+};
+
+/** Map Xiangqi kinds onto the closest animated sculpt for presentation. */
+export const XIANGQI_MODEL_KIND: Record<"p" | "n" | "b" | "r" | "c" | "a" | "k", "p" | "n" | "b" | "r" | "q" | "k"> = {
+  k: "k",
+  a: "b",
+  b: "b",
+  n: "n",
+  r: "r",
+  c: "q",
+  p: "p",
 };
