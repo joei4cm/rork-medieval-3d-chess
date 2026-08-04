@@ -13,57 +13,176 @@ import { buildXiangqiPiece } from "./xiangqiFigures";
 
 type WarriorKey = keyof typeof XIANGQI_WARRIOR_URLS;
 
+/**
+ * Templates are unit-height (soles on y=0, XZ centred) — baked into the GLBs
+ * and re-checked at load. Clones return an *outer* group you may reposition;
+ * never write `position` onto the scaled inner figure or the sole offset is
+ * wiped (that is what sent warrior_d / horse into the sky on Ultra rebuilds).
+ */
 interface NormalizedTemplate {
-  root: THREE.Object3D;
-  /** Uniform scale applied so standing height ≈ target. */
-  scale: number;
+  root: THREE.Group;
+  hasAlbedo: boolean;
 }
 
 let sharedLoader: GLTFLoader | null = null;
+let clayAlbedo: THREE.CanvasTexture | null = null;
 
 function getLoader(): GLTFLoader {
   if (sharedLoader) return sharedLoader;
   const loader = new GLTFLoader();
   const draco = new DRACOLoader();
-  // Official Google-hosted Draco WASM — required for our compressed scans.
   draco.setDecoderPath("https://www.gstatic.com/draco/versioned/decoders/1.5.7/");
   loader.setDRACOLoader(draco);
   sharedLoader = loader;
   return loader;
 }
 
-function measureHeight(root: THREE.Object3D): { height: number; minY: number; center: THREE.Vector3 } {
-  const box = new THREE.Box3().setFromObject(root);
-  const size = new THREE.Vector3();
-  box.getSize(size);
-  const center = new THREE.Vector3();
-  box.getCenter(center);
-  return { height: Math.max(0.001, size.y), minY: box.min.y, center };
+/** Soft terracotta grain for scans that shipped without albedo maps. */
+function clayTexture(): THREE.CanvasTexture {
+  if (clayAlbedo) return clayAlbedo;
+  const size = 256;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  const img = ctx.createImageData(size, size);
+  for (let i = 0; i < size * size; i += 1) {
+    const n = Math.random() * 28;
+    const warm = (Math.random() - 0.5) * 10;
+    img.data[i * 4] = 168 + n + warm;
+    img.data[i * 4 + 1] = 118 + n * 0.7;
+    img.data[i * 4 + 2] = 82 + n * 0.45;
+    img.data[i * 4 + 3] = 255;
+  }
+  ctx.putImageData(img, 0, 0);
+  for (let k = 0; k < 40; k += 1) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const r = 8 + Math.random() * 28;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(90,55,35,${0.08 + Math.random() * 0.1})`);
+    g.addColorStop(1, "rgba(90,55,35,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(2.2, 2.2);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  clayAlbedo = texture;
+  return texture;
 }
 
-/** Faction tint — warm vermilion clay vs cool iron clay over the scan albedo. */
-function applyTerracottaLook(root: THREE.Object3D, faction: Faction): THREE.MeshStandardMaterial[] {
-  const materials: THREE.MeshStandardMaterial[] = [];
-  const tint = faction === "w" ? 0xc49a78 : 0x6a6460;
+/**
+ * Mesh AABB in `root` local space. Empty helpers / lights are skipped so a
+ * zero box cannot explode scale to ~1000×.
+ */
+function measureLocalBox(root: THREE.Object3D): THREE.Box3 {
+  root.updateMatrixWorld(true);
+  const rootInverse = root.matrixWorld.clone().invert();
+  const box = new THREE.Box3();
+  const childBox = new THREE.Box3();
+  const toRoot = new THREE.Matrix4();
+  let found = false;
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh || !mesh.geometry) return;
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    childBox.copy(mesh.geometry.boundingBox ?? new THREE.Box3());
+    if (childBox.isEmpty()) return;
+    toRoot.multiplyMatrices(rootInverse, mesh.matrixWorld);
+    box.union(childBox.clone().applyMatrix4(toRoot));
+    found = true;
+  });
+  if (!found || box.isEmpty()) return new THREE.Box3().setFromObject(root);
+  return box;
+}
+
+function meshHasAlbedo(root: THREE.Object3D): boolean {
+  let found = false;
   root.traverse((node) => {
     const mesh = node as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const mat of mats) {
+      if ((mat as THREE.MeshStandardMaterial)?.map) found = true;
+    }
+  });
+  return found;
+}
+
+/**
+ * Ensure a loaded scene is unit-height with soles on y=0.
+ * Assets are pre-baked; this is the safety net if a file regressed.
+ */
+function normalizeScene(scene: THREE.Object3D): NormalizedTemplate {
+  const holder = new THREE.Group();
+  const model = scene.clone(true);
+  const prune: THREE.Object3D[] = [];
+  model.traverse((node) => {
+    if ((node as THREE.Light).isLight || (node as THREE.Camera).isCamera) prune.push(node);
+  });
+  for (const node of prune) node.parent?.remove(node);
+  holder.add(model);
+
+  const box = measureLocalBox(holder);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  const height = Math.max(size.y, 1e-3);
+
+  // Western-style: scale on the same node whose position already includes * scale
+  // so feet stay planted (compose is T·R·S — position is not auto-scaled).
+  const s = 1 / height;
+  model.position.set(-center.x * s, -box.min.y * s, -center.z * s);
+  model.scale.setScalar(s);
+  holder.updateMatrixWorld(true);
+
+  const check = measureLocalBox(holder);
+  const checkHeight = check.max.y - check.min.y;
+  if (checkHeight > 2.5 || checkHeight < 0.4 || check.min.y < -0.15 || check.min.y > 0.15) {
+    console.warn(
+      `[xiangqi-glb] unexpected unit bounds h=${checkHeight.toFixed(3)} minY=${check.min.y.toFixed(3)}`,
+    );
+  }
+
+  return { root: holder, hasAlbedo: meshHasAlbedo(holder) };
+}
+
+function applyTerracottaLook(
+  root: THREE.Object3D,
+  faction: Faction,
+  hasAlbedo: boolean,
+  castShadows: boolean,
+): void {
+  const tint = faction === "w" ? 0xc49a78 : 0x6a6460;
+  const clay = hasAlbedo ? null : clayTexture();
+  root.traverse((node) => {
+    const mesh = node as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    mesh.castShadow = castShadows;
+    mesh.receiveShadow = false;
+    mesh.frustumCulled = true;
     const source = mesh.material as THREE.MeshStandardMaterial | THREE.MeshStandardMaterial[];
     const list = Array.isArray(source) ? source : [source];
     const cloned = list.map((mat) => {
       const next = (mat as THREE.MeshStandardMaterial).clone();
-      if (next.color) next.color.lerp(new THREE.Color(tint), faction === "w" ? 0.35 : 0.45);
-      next.roughness = Math.min(0.92, (next.roughness ?? 0.7) * 1.05 + 0.05);
-      next.metalness = Math.min(0.25, next.metalness ?? 0.05);
-      next.envMapIntensity = 0.65;
-      materials.push(next);
+      if (!next.map && clay) {
+        next.map = clay;
+        next.color.setHex(faction === "w" ? 0xe0b090 : 0x9a9088);
+      } else if (next.color) {
+        next.color.lerp(new THREE.Color(tint), faction === "w" ? 0.28 : 0.4);
+      }
+      next.roughness = Math.min(0.94, (next.roughness ?? 0.7) * 1.02 + 0.08);
+      next.metalness = Math.min(0.18, next.metalness ?? 0.04);
+      next.envMapIntensity = hasAlbedo ? 0.75 : 0.55;
+      next.flatShading = false;
+      next.needsUpdate = true;
       return next;
     });
     mesh.material = Array.isArray(source) ? cloned : cloned[0];
   });
-  return materials;
 }
 
 /**
@@ -74,9 +193,23 @@ export class XiangqiGlbFactory {
   private warriors = new Map<WarriorKey, NormalizedTemplate>();
   private horse: NormalizedTemplate | null = null;
   private ready = false;
+  private readyListeners: Array<() => void> = [];
+  private castShadows = true;
 
   get isReady(): boolean {
     return this.ready;
+  }
+
+  whenReady(listener: () => void): void {
+    if (this.ready) {
+      listener();
+      return;
+    }
+    this.readyListeners.push(listener);
+  }
+
+  setCastShadows(enabled: boolean): void {
+    this.castShadows = enabled;
   }
 
   async load(onProgress?: (loaded: number, total: number) => void): Promise<void> {
@@ -89,13 +222,7 @@ export class XiangqiGlbFactory {
       ...keys.map(async (key) => {
         try {
           const gltf = await loader.loadAsync(XIANGQI_WARRIOR_URLS[key]);
-          const root = gltf.scene;
-          const { height, minY, center } = measureHeight(root);
-          // Recenter soles on y=0 and XZ mid.
-          root.position.x -= center.x;
-          root.position.z -= center.z;
-          root.position.y -= minY;
-          this.warriors.set(key, { root, scale: 1 / height });
+          this.warriors.set(key, normalizeScene(gltf.scene));
         } catch (error) {
           console.warn(`[xiangqi-glb] warrior ${key} failed`, error);
         } finally {
@@ -106,12 +233,7 @@ export class XiangqiGlbFactory {
       (async () => {
         try {
           const gltf = await loader.loadAsync(XIANGQI_HORSE_URL);
-          const root = gltf.scene;
-          const { height, minY, center } = measureHeight(root);
-          root.position.x -= center.x;
-          root.position.z -= center.z;
-          root.position.y -= minY;
-          this.horse = { root, scale: 1 / height };
+          this.horse = normalizeScene(gltf.scene);
         } catch (error) {
           console.warn("[xiangqi-glb] horse failed", error);
         } finally {
@@ -122,41 +244,42 @@ export class XiangqiGlbFactory {
     ]);
 
     this.ready = true;
+    for (const listener of this.readyListeners.splice(0)) listener();
   }
 
-  /** Clone a standing warrior normalized to the rank's board height. */
-  cloneWarrior(kind: PieceKind, faction: Faction): THREE.Object3D | null {
+  /** Outer group is safe to reposition; inner figure stays unit-scaled × target. */
+  cloneWarrior(kind: PieceKind, faction: Faction): THREE.Group | null {
     const key = xiangqiWarriorAsset(kind, faction);
     const template = this.warriors.get(key);
     if (!template) return null;
+    const outer = new THREE.Group();
+    outer.name = `xq_warrior_${key}`;
     const clone = template.root.clone(true);
-    const target = XIANGQI_FIGURE_HEIGHT[kind] ?? 0.8;
-    clone.scale.setScalar(template.scale * target);
-    applyTerracottaLook(clone, faction);
-    return clone;
+    clone.scale.setScalar(XIANGQI_FIGURE_HEIGHT[kind] ?? 0.8);
+    applyTerracottaLook(clone, faction, template.hasAlbedo, this.castShadows);
+    outer.add(clone);
+    return outer;
   }
 
-  cloneHorse(faction: Faction, height = 0.55): THREE.Object3D | null {
+  cloneHorse(faction: Faction, height = 0.55): THREE.Group | null {
     if (!this.horse) return null;
+    const outer = new THREE.Group();
+    outer.name = "xq_horse";
     const clone = this.horse.root.clone(true);
-    clone.scale.setScalar(this.horse.scale * height);
-    applyTerracottaLook(clone, faction);
-    return clone;
+    clone.scale.setScalar(height);
+    applyTerracottaLook(clone, faction, this.horse.hasAlbedo, this.castShadows);
+    outer.add(clone);
+    return outer;
   }
 
-  /**
-   * Full piece visual: terracotta GLB when available, else procedural Han miniature.
-   * Mounted ranks compose GLB rider / horse with procedural chariot/elephant/cannon.
-   */
   create(kind: PieceKind, faction: Faction): THREE.Object3D {
     const warrior = this.cloneWarrior(kind, faction);
 
-    // Standing ranks — pure terracotta figure on its own feet (lacquer disc added by PieceView).
     if (kind === "k" || kind === "a" || kind === "p" || (kind === "b" && faction === "w")) {
       if (warrior) {
         const root = new THREE.Group();
         root.name = `xq_glb_${kind}`;
-        warrior.position.y = 0.05;
+        warrior.position.y = 0.04;
         root.add(warrior);
         return root;
       }
@@ -166,24 +289,22 @@ export class XiangqiGlbFactory {
     if (kind === "n") {
       const root = new THREE.Group();
       root.name = "xq_glb_horse";
-      const horse = this.cloneHorse(faction, 0.62);
+      const horse = this.cloneHorse(faction, 0.58);
       if (horse) {
         horse.position.y = 0.02;
         root.add(horse);
       }
       if (warrior) {
-        warrior.position.set(0, horse ? 0.48 : 0.05, -0.02);
+        warrior.position.set(0, horse ? 0.42 : 0.04, -0.02);
         root.add(warrior);
       }
       if (root.children.length === 0) return buildXiangqiPiece(kind, faction);
       return root;
     }
 
-    // 象 / 车 / 炮 — keep inventive procedural mounts, drop a terracotta rider/crew on top.
     const assembled = buildXiangqiPiece(kind, faction);
     if (!warrior) return assembled;
 
-    // Remove procedural humanoid (han_*) so the scan is the character.
     const toRemove: THREE.Object3D[] = [];
     assembled.traverse((node) => {
       if (node.name.startsWith("han_")) toRemove.push(node);
@@ -205,5 +326,4 @@ export class XiangqiGlbFactory {
   }
 }
 
-/** Shared singleton — loaded once with the piece factory. */
 export const xiangqiGlbFactory = new XiangqiGlbFactory();

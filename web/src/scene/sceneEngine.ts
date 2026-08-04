@@ -16,6 +16,7 @@ import { EffectsSystem, ShakeSystem } from "./effects";
 import { FACTION_ACCENT, PieceFactory, PieceView, type ClipName, type TemplateKey } from "./pieces";
 import { PostFX } from "./postfx";
 import { QUALITY_SETTINGS, type QualityPreset } from "./quality";
+import { xiangqiGlbFactory } from "./xiangqiGlb";
 import { SPELL_LOOK, SpellLightPool, SpellOrb } from "./spells";
 import { disposeStrikeAssets, spawnGroundWave, spawnPillar, spawnSlash } from "./strikes";
 import { Ease, type Easing, TweenManager, wait } from "./tween";
@@ -537,6 +538,7 @@ export class SceneEngine {
     this.arena = arena;
     const look = ARENA_LOOKS[arena];
     const settings = QUALITY_SETTINGS[preset];
+    xiangqiGlbFactory.setCastShadows(settings.shadows && preset !== "low");
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -3342,6 +3344,9 @@ export class SceneEngine {
     const settings = QUALITY_SETTINGS[preset];
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, settings.maxPixelRatio));
     this.renderer.shadowMap.enabled = settings.shadows && !this.safeMode;
+    // Scanned terracotta meshes are costly shadow casters; keep them off on low
+    // and only enable from medium up (Ultra already pays for 4K maps + SSAO).
+    xiangqiGlbFactory.setCastShadows(settings.shadows && preset !== "low");
     this.hall.applyQuality(preset);
     this.battlefield.applyQuality(preset);
     this.jungle.applyQuality(preset);
