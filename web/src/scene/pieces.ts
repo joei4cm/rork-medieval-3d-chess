@@ -418,7 +418,8 @@ export class PieceView {
         map: sharedShadowTexture(),
         color: 0x000000,
         transparent: true,
-        opacity: xiangqi ? 0.45 : 0.55,
+        // Slightly stronger contact shadow than western — lacquer discs read better.
+        opacity: xiangqi ? 0.5 : 0.55,
         depthWrite: false,
       });
       this.shadow = new THREE.Mesh(sharedDiscGeometry(), shadowMaterial);
