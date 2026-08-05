@@ -60,7 +60,7 @@ export const XIANGQI_ROLE_ZH: Record<Faction, Record<"k" | "a" | "b" | "n" | "r"
 
 /**
  * Factory template key when a western sculpt must still be loaded.
- * Live Xiangqi visuals are original Han–Qin miniatures (xiangqiFigures) —
+ * Live Xiangqi visuals are Han–Qin miniatures / terracotta GLBs —
  * this mapping only keeps PieceFactory.create() wired for roster preload.
  */
 export function xiangqiSculpt(kind: PieceKind, color: Faction): ChessSculpt {

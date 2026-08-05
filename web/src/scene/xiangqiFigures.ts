@@ -2,11 +2,22 @@ import * as THREE from "three";
 
 import type { Faction, PieceKind } from "../core/types";
 import { xiangqiGlyph } from "../xiangqi/identity";
+import {
+  armorMaterial,
+  bronzeMaterial,
+  clayMaterial,
+  glyphMaterial,
+  lacquerMaterial,
+  leatherMaterial,
+  woodMaterial,
+} from "./xiangqiMaterials";
+import { xiangqiWoodTexture } from "./xiangqiTextures";
 
 /**
  * Original Han–Qin battlefield miniatures for Xiangqi.
  * NOT western Meshy knights — lamellar 札甲, 鹖冠 / 进贤冠, ge/ji/spear,
  * vermilion vs iron lacquer. Each rank has a distinct Chinese silhouette.
+ * Materials come from xiangqiMaterials (western-parity clearcoat / env response).
  */
 
 type Rank =
@@ -19,6 +30,7 @@ type Rank =
   | "driver"
   | "mahout";
 
+/** Flat / one-off props that do not need clay maps. */
 function std(
   color: number,
   roughness: number,
@@ -35,26 +47,6 @@ function std(
     emissive,
     emissiveIntensity,
   });
-}
-
-function lacquer(
-  color: number,
-  opts: { roughness?: number; clearcoat?: number; emissive?: number; ei?: number } = {},
-): THREE.MeshPhysicalMaterial {
-  return new THREE.MeshPhysicalMaterial({
-    color,
-    roughness: opts.roughness ?? 0.28,
-    metalness: 0.12,
-    clearcoat: opts.clearcoat ?? 0.82,
-    clearcoatRoughness: 0.14,
-    envMapIntensity: 1.05,
-    emissive: opts.emissive ?? 0x000000,
-    emissiveIntensity: opts.ei ?? 0,
-  });
-}
-
-function bronze(color = 0xb08a40): THREE.MeshStandardMaterial {
-  return std(color, 0.28, 0.92, 1.35, 0x2a1a06, 0.22);
 }
 
 /** Faction livery — vermilion Han vs iron Chu, not ivory/obsidian western. */
@@ -146,10 +138,26 @@ export function buildXiangqiDisc(faction: Faction, kind: PieceKind, radius = 0.3
   const g = new THREE.Group();
   g.name = "seal_disc";
 
-  addCyl(g, radius, radius * 1.04, 0.08, std(p.wood, 0.55, 0.08, 0.65), 0, 0.04, 0, 0, 0, 0, 32);
+  addCyl(
+    g,
+    radius,
+    radius * 1.04,
+    0.08,
+    woodMaterial(p.wood, xiangqiWoodTexture(faction === "b")),
+    0,
+    0.04,
+    0,
+    0,
+    0,
+    0,
+    32,
+  );
   const rim = new THREE.Mesh(
     new THREE.TorusGeometry(radius * 0.88, 0.02, 8, 32),
-    lacquer(p.lacquerRim, { clearcoat: 0.9, emissive: faction === "w" ? 0x3a0808 : 0x2a1a06, ei: 0.18 }),
+    lacquerMaterial(faction, p.lacquerRim, {
+      emissive: faction === "w" ? 0x3a0808 : 0x2a1a06,
+      emissiveIntensity: 0.18,
+    }),
   );
   rim.rotation.x = Math.PI / 2;
   rim.position.y = 0.085;
@@ -171,11 +179,7 @@ export function buildXiangqiDisc(faction: Faction, kind: PieceKind, radius = 0.3
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 8;
-      const glyphMat = std(0xffffff, 0.5, 0.05, 0.4);
-      glyphMat.map = tex;
-      glyphMat.transparent = true;
-      glyphMat.depthWrite = false;
-      const plane = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.55, 24), glyphMat);
+      const plane = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.55, 24), glyphMaterial(tex));
       plane.rotation.x = -Math.PI / 2;
       plane.position.y = 0.09;
       g.add(plane);
@@ -233,15 +237,18 @@ function buildHanSoldier(opts: SoldierOpts): THREE.Group {
   const g = new THREE.Group();
   g.name = `han_${rank}`;
 
-  const skin = std(p.skin, 0.72, 0.04, 0.45);
-  const hair = std(p.hair, 0.85, 0.02, 0.25);
-  const cloth = std(p.cloth, 0.7, 0.05, 0.5);
-  const armor = lacquer(p.armor, { emissive: faction === "w" ? 0x2a0808 : 0x080808, ei: 0.12 });
-  const armorDark = lacquer(p.armorDark, { roughness: 0.35 });
-  const scaleMat = lacquer(p.scale, { roughness: 0.32 });
-  const trim = bronze(p.trim);
-  const boot = std(p.boot, 0.82, 0.04, 0.3);
-  const wood = std(p.wood, 0.75, 0.05, 0.4);
+  const skin = clayMaterial(faction, p.skin);
+  const hair = leatherMaterial(p.hair);
+  const cloth = leatherMaterial(p.cloth);
+  const armor = lacquerMaterial(faction, p.armor, {
+    emissive: faction === "w" ? 0x2a0808 : 0x080808,
+    emissiveIntensity: 0.12,
+  });
+  const armorDark = lacquerMaterial(faction, p.armorDark);
+  const scaleMat = armorMaterial(faction, p.scale);
+  const trim = bronzeMaterial(p.trim);
+  const boot = leatherMaterial(p.boot);
+  const wood = woodMaterial(p.wood, xiangqiWoodTexture(faction === "b"));
 
   const s = height / 0.78;
 
@@ -314,7 +321,7 @@ function buildHanSoldier(opts: SoldierOpts): THREE.Group {
     addCyl(g, 0.085 * s, 0.095 * s, 0.08 * s, trim, 0, 0.92 * s, 0, 0, 0, 0, 12);
     addBox(g, 0.2 * s, 0.035 * s, 0.11 * s, trim, 0, 0.96 * s, 0);
     for (const side of [-1, 1]) {
-      const plume = new THREE.Mesh(new THREE.ConeGeometry(0.032 * s, 0.32 * s, 8), lacquer(p.armor));
+      const plume = new THREE.Mesh(new THREE.ConeGeometry(0.032 * s, 0.32 * s, 8), armor);
       plume.position.set(side * 0.08 * s, 1.14 * s, -0.02 * s);
       plume.rotation.z = side * 0.45;
       g.add(plume);
@@ -329,7 +336,7 @@ function buildHanSoldier(opts: SoldierOpts): THREE.Group {
     addBox(g, 0.34 * s, 0.06 * s, 0.02 * s, trim, 0, 0.64 * s, -0.2 * s);
     // Shoulder tassels
     for (const side of [-1, 1]) {
-      addCyl(g, 0.02 * s, 0.01 * s, 0.12 * s, lacquer(p.armor), side * 0.16 * s, 0.55 * s, 0.02 * s);
+      addCyl(g, 0.02 * s, 0.01 * s, 0.12 * s, armor, side * 0.16 * s, 0.55 * s, 0.02 * s);
     }
   } else if (rank === "guard") {
     // 进贤冠 — wide winged scholar-guard hat
@@ -390,7 +397,7 @@ function buildHanSoldier(opts: SoldierOpts): THREE.Group {
     addBox(g, 0.055 * s, 0.16 * s, 0.012 * s, trim, 0.18 * s, 0.45 * s, 0.08 * s);
   } else if (weapon === "staff") {
     addCyl(g, 0.014 * s, 0.014 * s, 0.58 * s, trim, 0.2 * s, 0.48 * s, 0.02 * s);
-    addCyl(g, 0.03 * s, 0.02 * s, 0.05 * s, lacquer(p.armor), 0.2 * s, 0.8 * s, 0.02 * s);
+    addCyl(g, 0.03 * s, 0.02 * s, 0.05 * s, armor, 0.2 * s, 0.8 * s, 0.02 * s);
   }
 
   if (shield) {
@@ -446,8 +453,8 @@ function buildElephant(faction: Faction): THREE.Object3D {
 
   const hide = std(faction === "w" ? 0xa89078 : 0x4a4440, 0.78, 0.04, 0.4);
   const ivory = std(0xe0d4b8, 0.4, 0.15, 0.7);
-  const cloth = lacquer(p.armor);
-  const trim = bronze(p.trim);
+  const cloth = lacquerMaterial(faction, p.armor);
+  const trim = bronzeMaterial(p.trim);
 
   const body = new THREE.Mesh(new THREE.SphereGeometry(0.28, 20, 16), hide);
   body.scale.set(1.2, 0.9, 1.5);
@@ -457,7 +464,7 @@ function buildElephant(faction: Faction): THREE.Object3D {
   // Howdah canopy (Chinese pavilion tip)
   addBox(root, 0.28, 0.06, 0.32, cloth, 0, 0.58, -0.02);
   addBox(root, 0.3, 0.04, 0.34, trim, 0, 0.64, -0.02);
-  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.14, 4), lacquer(p.armorDark));
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.14, 4), lacquerMaterial(faction, p.armorDark));
   roof.position.set(0, 0.74, -0.02);
   roof.rotation.y = Math.PI / 4;
   root.add(roof);
@@ -515,8 +522,8 @@ function buildHorse(faction: Faction): THREE.Object3D {
 
   const hide = std(faction === "w" ? 0x9a8070 : 0x3a3834, 0.75, 0.04, 0.45);
   const mane = std(p.hair, 0.85, 0.02, 0.3);
-  const trim = bronze(p.trim);
-  const cloth = lacquer(p.armor);
+  const trim = bronzeMaterial(p.trim);
+  const cloth = lacquerMaterial(faction, p.armor);
 
   const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.1, 0.28, 6, 12), hide);
   body.rotation.z = Math.PI / 2;
@@ -571,8 +578,8 @@ function buildChariot(faction: Faction): THREE.Object3D {
   root.add(buildXiangqiDisc(faction, "r", 0.36));
 
   const wood = std(p.wood, 0.7, 0.06, 0.55);
-  const trim = bronze(p.trim);
-  const lacq = lacquer(p.armor);
+  const trim = bronzeMaterial(p.trim);
+  const lacq = lacquerMaterial(faction, p.armor);
 
   addBox(root, 0.4, 0.06, 0.5, wood, 0, 0.26, 0);
   for (const x of [-0.18, 0.18]) addBox(root, 0.035, 0.2, 0.46, lacq, x, 0.38, 0);
@@ -615,7 +622,7 @@ function buildCannon(faction: Faction): THREE.Object3D {
   root.add(buildXiangqiDisc(faction, "c", 0.34));
 
   const iron = std(0x3a3e44, 0.35, 0.9, 1.2, 0x101418, 0.1);
-  const trim = bronze(p.trim);
+  const trim = bronzeMaterial(p.trim);
   const wood = std(p.wood, 0.72, 0.05, 0.5);
 
   addBox(root, 0.28, 0.09, 0.36, wood, 0, 0.26, 0);

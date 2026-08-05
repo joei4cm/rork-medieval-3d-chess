@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
 
 import type { SquareId } from "../core/types";
 import type { ArenaLook } from "./arena";
@@ -12,7 +13,13 @@ import {
   selectMarkerTexture,
   shockwaveTexture,
 } from "./textures";
-import { xiangqiRiverTexture, xiangqiWoodTexture } from "./xiangqiTextures";
+import {
+  xiangqiBoardBorderTexture,
+  xiangqiEngravedGridTexture,
+  xiangqiRiverTexture,
+  xiangqiWoodRoughnessMap,
+  xiangqiWoodTexture,
+} from "./xiangqiTextures";
 import type { HighlightKind } from "./board";
 
 const HIGHLIGHT_COLORS: Record<HighlightKind, number> = {
@@ -133,9 +140,12 @@ export class XiangqiBoardView {
   private slots = new Map<SquareId, HighlightSlot>();
   private shrouds = new Map<SquareId, ShroudSlot>();
   private hoverRing: THREE.Mesh;
-  private baseMaterial: THREE.MeshStandardMaterial | null = null;
-  private lineMaterial: THREE.LineBasicMaterial | null = null;
-  private riverMaterial: THREE.MeshStandardMaterial | null = null;
+  private baseMaterial: THREE.MeshPhysicalMaterial | null = null;
+  private faceMaterial: THREE.MeshPhysicalMaterial | null = null;
+  private rimMaterial: THREE.MeshPhysicalMaterial | null = null;
+  private trimMaterial: THREE.MeshStandardMaterial | null = null;
+  private lineMaterial: THREE.MeshStandardMaterial | null = null;
+  private riverMaterial: THREE.MeshPhysicalMaterial | null = null;
   private disposables: { dispose: () => void }[] = [];
   private elapsed = 0;
   private waves: ImpactWave[] = [];
@@ -144,8 +154,8 @@ export class XiangqiBoardView {
   private landingCursor = 0;
   private markerMaps: Partial<Record<HighlightKind, THREE.Texture>> = {};
 
-  private riverFlow: THREE.MeshStandardMaterial | null = null;
-  private riverFlow2: THREE.MeshStandardMaterial | null = null;
+  private riverFlow: THREE.MeshPhysicalMaterial | null = null;
+  private riverFlow2: THREE.MeshPhysicalMaterial | null = null;
   private mistSprites: THREE.Mesh[] = [];
   private foamPoints: THREE.Points | null = null;
   private foamVelocities: Float32Array | null = null;
@@ -158,120 +168,182 @@ export class XiangqiBoardView {
 
     const width = (geom.fileCount - 1) * TILE + TILE * 1.35;
     const depth = (geom.rankCount - 1) * TILE + TILE * 1.35;
+    const playW = (geom.fileCount - 1) * TILE;
+    const playD = (geom.rankCount - 1) * TILE;
 
-    // Thick lacquered wood slab with grain.
+    // Thick lacquered wood slab — RoundedBox + clearcoat (western marble recipe).
     const woodMap = this.track(xiangqiWoodTexture(false));
+    const woodRough = this.track(xiangqiWoodRoughnessMap(false));
     const wood = this.track(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         map: woodMap,
+        roughnessMap: woodRough,
         color: 0xe8c890,
-        roughness: 0.58,
+        roughness: 0.38,
         metalness: 0.06,
+        clearcoat: 0.55,
+        clearcoatRoughness: 0.28,
+        envMapIntensity: 0.85,
       }),
     );
     this.baseMaterial = wood;
 
-    const slab = new THREE.Mesh(new THREE.BoxGeometry(width, 0.28, depth), wood);
-    slab.position.y = BOARD_TOP - 0.14;
+    const slab = new THREE.Mesh(this.track(new RoundedBoxGeometry(width, 0.32, depth, 4, 0.06)), wood);
+    slab.position.y = BOARD_TOP - 0.16;
     slab.receiveShadow = true;
     slab.castShadow = true;
     this.group.add(slab);
 
-    // Clean playing face — warm lacquer, no muddy landscape wash.
-    const faceMat = this.track(
+    // Engraved border ledge (western boardBorderTexture pattern).
+    const borderMap = this.track(xiangqiBoardBorderTexture());
+    const borderMat = this.track(
       new THREE.MeshStandardMaterial({
-        map: this.track(xiangqiWoodTexture(false)),
-        color: 0xf0d9a0,
-        roughness: 0.52,
-        metalness: 0.04,
+        map: borderMap,
+        color: 0xc4a878,
+        roughness: 0.48,
+        metalness: 0.42,
+        envMapIntensity: 1.1,
       }),
     );
-    const face = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE + 0.15, (geom.rankCount - 1) * TILE + 0.15),
-      faceMat,
+    const border = new THREE.Mesh(
+      this.track(new RoundedBoxGeometry(width + 0.06, 0.05, depth + 0.06, 3, 0.03)),
+      borderMat,
     );
+    border.position.y = BOARD_TOP - 0.005;
+    border.receiveShadow = true;
+    this.group.add(border);
+
+    // Playing face — polished lacquer wood with clearcoat.
+    const faceMat = this.track(
+      new THREE.MeshPhysicalMaterial({
+        map: this.track(xiangqiWoodTexture(false)),
+        roughnessMap: this.track(xiangqiWoodRoughnessMap(false)),
+        color: 0xf2d9a4,
+        roughness: 0.28,
+        metalness: 0.05,
+        clearcoat: 0.78,
+        clearcoatRoughness: 0.14,
+        envMapIntensity: 0.95,
+      }),
+    );
+    this.faceMaterial = faceMat;
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(playW + 0.12, playD + 0.12), faceMat);
     face.rotation.x = -Math.PI / 2;
-    face.position.y = BOARD_TOP + 0.002;
+    face.position.y = BOARD_TOP + 0.003;
     face.receiveShadow = true;
     this.group.add(face);
 
-    // Vermilion lacquer rim / frame.
-    const rim = this.track(
+    // Engraved vermilion grid overlay (lit, not LineBasic).
+    const gridMat = this.track(
       new THREE.MeshStandardMaterial({
-        color: 0x8b1e1e,
-        roughness: 0.4,
-        metalness: 0.28,
-        emissive: 0x3a0808,
-        emissiveIntensity: 0.18,
+        map: this.track(xiangqiEngravedGridTexture()),
+        transparent: true,
+        depthWrite: false,
+        roughness: 0.42,
+        metalness: 0.15,
+        envMapIntensity: 0.55,
+        polygonOffset: true,
+        polygonOffsetFactor: -1,
       }),
     );
-    const frame = new THREE.Mesh(new THREE.BoxGeometry(width + 0.34, 0.36, depth + 0.34), rim);
-    frame.position.y = BOARD_TOP - 0.22;
+    this.lineMaterial = gridMat;
+    const grid = new THREE.Mesh(new THREE.PlaneGeometry(playW, playD), gridMat);
+    grid.rotation.x = -Math.PI / 2;
+    grid.position.y = BOARD_TOP + 0.005;
+    grid.renderOrder = 2;
+    this.group.add(grid);
+
+    // Vermilion lacquer rim / frame with clearcoat.
+    const rim = this.track(
+      new THREE.MeshPhysicalMaterial({
+        color: 0x8b1e1e,
+        roughness: 0.22,
+        metalness: 0.18,
+        clearcoat: 0.9,
+        clearcoatRoughness: 0.1,
+        envMapIntensity: 1.05,
+        emissive: 0x3a0808,
+        emissiveIntensity: 0.22,
+      }),
+    );
+    this.rimMaterial = rim;
+    const frame = new THREE.Mesh(
+      this.track(new RoundedBoxGeometry(width + 0.38, 0.4, depth + 0.38, 4, 0.07)),
+      rim,
+    );
+    frame.position.y = BOARD_TOP - 0.24;
     frame.receiveShadow = true;
     frame.castShadow = true;
     this.group.add(frame);
 
-    // Inner gold trim.
+    // Inner gold trim — western bronze trim recipe.
     const trim = this.track(
       new THREE.MeshStandardMaterial({
         color: 0xd4a84a,
-        roughness: 0.35,
-        metalness: 0.65,
+        roughness: 0.26,
+        metalness: 0.95,
         emissive: 0x3a2808,
-        emissiveIntensity: 0.12,
+        emissiveIntensity: 0.35,
+        envMapIntensity: 1.4,
       }),
     );
-    const trimMesh = new THREE.Mesh(new THREE.BoxGeometry(width + 0.08, 0.04, depth + 0.08), trim);
+    this.trimMaterial = trim;
+    const trimMesh = new THREE.Mesh(
+      this.track(new RoundedBoxGeometry(width + 0.12, 0.06, depth + 0.12, 3, 0.025)),
+      trim,
+    );
     trimMesh.position.y = BOARD_TOP - 0.01;
+    trimMesh.castShadow = true;
     this.group.add(trimMesh);
 
-    // Classic 楚河汉界 band — calligraphy strip between the camps (not a fake 3D river).
+    // Classic 楚河汉界 band — calligraphy strip between the camps.
     const riverBand = this.track(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         map: this.track(xiangqiWoodTexture(false)),
+        roughnessMap: this.track(xiangqiWoodRoughnessMap(false)),
         color: 0xe0c078,
-        roughness: 0.55,
+        roughness: 0.32,
         metalness: 0.08,
+        clearcoat: 0.5,
+        clearcoatRoughness: 0.22,
+        envMapIntensity: 0.8,
         emissive: 0x3a2010,
         emissiveIntensity: 0.08,
       }),
     );
     this.riverMaterial = riverBand;
-    const bandMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE - 0.08, TILE * 0.92),
-      riverBand,
-    );
+    const bandMesh = new THREE.Mesh(new THREE.PlaneGeometry(playW - 0.08, TILE * 0.92), riverBand);
     bandMesh.rotation.x = -Math.PI / 2;
     bandMesh.position.set(0, BOARD_TOP + 0.006, 0);
     this.group.add(bandMesh);
 
-    // Soft shimmer sheet over the calligraphy band (keeps a hint of water without drowning the board).
+    // Soft shimmer sheet over the calligraphy band.
     const shimmerMap = this.track(xiangqiRiverTexture());
     shimmerMap.repeat.set(4, 1);
     const shimmer = this.track(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         map: shimmerMap,
         color: 0x88c0b8,
-        roughness: 0.25,
-        metalness: 0.2,
+        roughness: 0.12,
+        metalness: 0.25,
+        clearcoat: 0.65,
+        clearcoatRoughness: 0.2,
         transparent: true,
-        opacity: 0.18,
+        opacity: 0.2,
         emissive: 0x306858,
-        emissiveIntensity: 0.15,
+        emissiveIntensity: 0.18,
         depthWrite: false,
+        envMapIntensity: 0.9,
       }),
     );
     this.riverFlow = shimmer;
     this.riverFlow2 = null;
-    const shimmerMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry((geom.fileCount - 1) * TILE - 0.2, TILE * 0.7),
-      shimmer,
-    );
+    const shimmerMesh = new THREE.Mesh(new THREE.PlaneGeometry(playW - 0.2, TILE * 0.7), shimmer);
     shimmerMesh.rotation.x = -Math.PI / 2;
     shimmerMesh.position.set(0, BOARD_TOP + 0.01, 0);
     this.group.add(shimmerMesh);
 
-    this.initFoamParticles((geom.fileCount - 1) * TILE * 0.6);
+    this.initFoamParticles(playW * 0.6);
     this.initSplashRings();
 
     // Large traditional calligraphy sitting in the band.
@@ -279,11 +351,15 @@ export class XiangqiBoardView {
 
     // Palace floors — inlaid darker wood panels under the nine-palace.
     const palaceMat = this.track(
-      new THREE.MeshStandardMaterial({
+      new THREE.MeshPhysicalMaterial({
         map: this.track(xiangqiWoodTexture(true)),
+        roughnessMap: this.track(xiangqiWoodRoughnessMap(true)),
         color: 0xb88848,
-        roughness: 0.48,
-        metalness: 0.12,
+        roughness: 0.36,
+        metalness: 0.14,
+        clearcoat: 0.45,
+        clearcoatRoughness: 0.25,
+        envMapIntensity: 0.75,
         emissive: 0x2a1808,
         emissiveIntensity: 0.1,
       }),
@@ -291,97 +367,13 @@ export class XiangqiBoardView {
     for (const baseRank of [0, 7]) {
       const zCentre = (geom.halfRanks - (baseRank + 1)) * TILE;
       const palace = new THREE.Mesh(
-        new THREE.BoxGeometry(2 * TILE + 0.06, 0.025, 2 * TILE + 0.06),
+        this.track(new RoundedBoxGeometry(2 * TILE + 0.06, 0.03, 2 * TILE + 0.06, 2, 0.012)),
         palaceMat,
       );
       palace.position.set(0, BOARD_TOP + 0.008, zCentre);
       palace.receiveShadow = true;
       this.group.add(palace);
     }
-
-    // Grid lines — classic dark vermilion on lacquer.
-    const lineMat = this.track(new THREE.LineBasicMaterial({ color: 0x6a1810, transparent: true, opacity: 0.95 }));
-    this.lineMaterial = lineMat;
-    const points: THREE.Vector3[] = [];
-    const yLine = BOARD_TOP + 0.018;
-    for (let r = 0; r < geom.rankCount; r++) {
-      const z = (geom.halfRanks - r) * TILE;
-      const x0 = -geom.halfFiles * TILE;
-      const x1 = geom.halfFiles * TILE;
-      points.push(new THREE.Vector3(x0, yLine, z), new THREE.Vector3(x1, yLine, z));
-    }
-    for (let f = 0; f < geom.fileCount; f++) {
-      const x = (f - geom.halfFiles) * TILE;
-      if (f === 0 || f === geom.fileCount - 1) {
-        points.push(
-          new THREE.Vector3(x, yLine, geom.halfRanks * TILE),
-          new THREE.Vector3(x, yLine, -geom.halfRanks * TILE),
-        );
-      } else {
-        points.push(
-          new THREE.Vector3(x, yLine, geom.halfRanks * TILE),
-          new THREE.Vector3(x, yLine, 0.5 * TILE),
-          new THREE.Vector3(x, yLine, -0.5 * TILE),
-          new THREE.Vector3(x, yLine, -geom.halfRanks * TILE),
-        );
-      }
-    }
-    // Palace diagonals (九宫)
-    for (const baseRank of [0, 7]) {
-      const z0 = (geom.halfRanks - baseRank) * TILE;
-      const z2 = (geom.halfRanks - (baseRank + 2)) * TILE;
-      const x3 = (3 - geom.halfFiles) * TILE;
-      const x5 = (5 - geom.halfFiles) * TILE;
-      points.push(
-        new THREE.Vector3(x3, yLine + 0.001, z0),
-        new THREE.Vector3(x5, yLine + 0.001, z2),
-        new THREE.Vector3(x5, yLine + 0.001, z0),
-        new THREE.Vector3(x3, yLine + 0.001, z2),
-      );
-    }
-    // Traditional "cannon / soldier" position markers (炮位 / 兵位)
-    const markOffsets: [number, number][] = [
-      [1, 2],
-      [7, 2],
-      [0, 3],
-      [2, 3],
-      [4, 3],
-      [6, 3],
-      [8, 3],
-      [1, 7],
-      [7, 7],
-      [0, 6],
-      [2, 6],
-      [4, 6],
-      [6, 6],
-      [8, 6],
-    ];
-    for (const [f, r] of markOffsets) {
-      const x = (f - geom.halfFiles) * TILE;
-      const z = (geom.halfRanks - r) * TILE;
-      const s = 0.1;
-      points.push(
-        new THREE.Vector3(x - s, yLine + 0.001, z - s * 0.6),
-        new THREE.Vector3(x - s * 0.35, yLine + 0.001, z - s * 0.6),
-        new THREE.Vector3(x - s, yLine + 0.001, z - s * 0.6),
-        new THREE.Vector3(x - s, yLine + 0.001, z - s * 0.2),
-        new THREE.Vector3(x + s, yLine + 0.001, z - s * 0.6),
-        new THREE.Vector3(x + s * 0.35, yLine + 0.001, z - s * 0.6),
-        new THREE.Vector3(x + s, yLine + 0.001, z - s * 0.6),
-        new THREE.Vector3(x + s, yLine + 0.001, z - s * 0.2),
-        new THREE.Vector3(x - s, yLine + 0.001, z + s * 0.6),
-        new THREE.Vector3(x - s * 0.35, yLine + 0.001, z + s * 0.6),
-        new THREE.Vector3(x - s, yLine + 0.001, z + s * 0.6),
-        new THREE.Vector3(x - s, yLine + 0.001, z + s * 0.2),
-        new THREE.Vector3(x + s, yLine + 0.001, z + s * 0.6),
-        new THREE.Vector3(x + s * 0.35, yLine + 0.001, z + s * 0.6),
-        new THREE.Vector3(x + s, yLine + 0.001, z + s * 0.6),
-        new THREE.Vector3(x + s, yLine + 0.001, z + s * 0.2),
-      );
-    }
-
-    const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-    this.group.add(new THREE.LineSegments(lineGeo, lineMat));
 
     this.markerMaps.select = this.track(selectMarkerTexture());
     this.markerMaps.move = this.track(moveMarkerTexture());
@@ -599,8 +591,19 @@ export class XiangqiBoardView {
 
     const tex = this.track(new THREE.CanvasTexture(canvas));
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 8;
     const mat = this.track(
-      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0.92, depthWrite: false }),
+      new THREE.MeshStandardMaterial({
+        map: tex,
+        transparent: true,
+        opacity: 0.94,
+        depthWrite: false,
+        roughness: 0.4,
+        metalness: 0.08,
+        envMapIntensity: 0.45,
+        emissive: 0x2a1008,
+        emissiveIntensity: 0.12,
+      }),
     );
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(TILE * 7.2, TILE * 0.72), mat);
     mesh.rotation.x = -Math.PI / 2;
@@ -769,8 +772,25 @@ export class XiangqiBoardView {
     }
   }
 
-  applyArena(_look: ArenaLook): void {
-    // Lacquer board keeps its own palette; arena still drives the hall around it.
+  applyArena(look: ArenaLook): void {
+    // Soft hall tint — keep vermilion lacquer identity while matching western applyArena.
+    if (this.trimMaterial) this.trimMaterial.color.setHex(look.board.trim);
+    if (this.baseMaterial) {
+      // Blend arena base into warm wood without losing lacquer read.
+      const base = new THREE.Color(look.board.base);
+      this.baseMaterial.color.setRGB(
+        0.75 + base.r * 0.2,
+        0.62 + base.g * 0.18,
+        0.4 + base.b * 0.12,
+      );
+      this.baseMaterial.envMapIntensity = 0.75 + look.environment.intensity * 0.15;
+    }
+    if (this.faceMaterial) {
+      this.faceMaterial.envMapIntensity = 0.85 + look.environment.intensity * 0.15;
+    }
+    if (this.rimMaterial) {
+      this.rimMaterial.envMapIntensity = 0.95 + look.environment.intensity * 0.15;
+    }
   }
 
   setHighlight(square: SquareId, kind: HighlightKind, pulse = false, delay = 0): void {
